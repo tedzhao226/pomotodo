@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pomotodo</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header>
+    <div class="topbar">
+      <div class="brand"><span class="brand-dot"></span> Pomotodo</div>
+      <div class="user">awesomeuser ▾</div>
+    </div>
+    <nav class="nav" id="nav">
+      <button type="button" class="nav-btn active" data-view="main">Main</button>
+      <button type="button" class="nav-btn" data-view="stats">Statistics</button>
+      <button type="button" class="nav-btn" data-view="settings">Settings</button>
+    </nav>
+  </header>
+
+  <main>
+    <!-- MAIN VIEW -->
+    <section class="view active" id="view-main">
+      <div id="active-banner" class="active-banner" hidden></div>
+      <div class="main-grid">
+        <div class="col">
+          <section class="panel timer-panel" id="timer-panel">
+            <h2>Timer</h2>
+            <div class="timer-display" id="timer-display">00:00</div>
+            <p id="timer-mode" class="timer-mode">Ready</p>
+            <p class="current-task">Task: <strong id="current-task">No task selected</strong></p>
+            <div class="timer-controls">
+              <label>
+                Duration
+                <select id="duration-select">
+                  <option value="30">30 min</option>
+                  <option value="45">45 min</option>
+                  <option value="60">60 min</option>
+                  <option value="90">90 min</option>
+                </select>
+              </label>
+            </div>
+            <div class="timer-buttons">
+              <button type="button" id="start-btn">Start Pomo</button>
+              <button type="button" id="pause-btn" disabled>Pause</button>
+              <button type="button" id="stop-btn" disabled>Stop</button>
+            </div>
+            <div id="continue-rest-prompt" class="prompt" hidden>
+              <p>Block finished. What next?</p>
+              <button type="button" id="continue-btn">Continue (skip rest)</button>
+              <button type="button" id="rest-btn">Take a rest</button>
+            </div>
+            <div id="rest-prompt" class="prompt" hidden>
+              <p id="rest-label">Rest time</p>
+              <button type="button" id="skip-rest-btn">Skip rest</button>
+            </div>
+          </section>
+
+          <section class="panel" id="today-panel">
+            <h2>Today <span id="today-count" class="today-count"></span></h2>
+            <ul id="today-log" class="today-log"></ul>
+          </section>
+        </div>
+
+        <div class="col">
+          <section class="panel" id="filter-panel">
+            <h2>Filter by tag</h2>
+            <div id="tag-chips" class="chips"></div>
+          </section>
+
+          <section class="panel" id="tasks-panel">
+            <div class="panel-head">
+              <h2>Todos</h2>
+              <button type="button" class="link-btn" id="clear-completed-btn">Clear completed</button>
+            </div>
+            <form id="add-task-form" class="add-form">
+              <input
+                type="text"
+                id="task-input"
+                placeholder="Add todo —  e.g. PTE #learn *5"
+                autocomplete="off"
+                required
+              >
+              <button type="submit">Add</button>
+            </form>
+            <p class="hint">Use <code>#tag</code> for tags and <code>*N</code> for estimated blocks.</p>
+            <p id="add-task-error" class="error" hidden></p>
+            <div id="running-block-banner" class="running-banner" hidden></div>
+            <ul id="task-list"></ul>
+          </section>
+        </div>
+      </div>
+
+      <div class="mini-cards" id="mini-cards">
+        <button type="button" class="mini-card" data-view="stats" id="card-statistics">
+          <span class="mini-label">Statistics</span>
+          <span class="mini-sub">This week</span>
+          <div class="mini-chart" id="mini-week"></div>
+          <span class="mini-value" id="mini-week-value">0</span>
+        </button>
+        <div class="mini-card">
+          <span class="mini-label">Goal</span>
+          <span class="mini-sub">Daily goal</span>
+          <div class="mini-chart" id="mini-goal"></div>
+          <span class="mini-value" id="mini-goal-value">0 / 0</span>
+        </div>
+        <button type="button" class="mini-card" data-view="stats" id="card-pomo-history">
+          <span class="mini-label">Pomo History</span>
+          <span class="mini-sub">All time pomos</span>
+          <div class="mini-chart" id="mini-pomo"></div>
+          <span class="mini-value" id="mini-pomo-value">0</span>
+        </button>
+        <div class="mini-card">
+          <span class="mini-label">Todo History</span>
+          <span class="mini-sub">All time todos</span>
+          <span class="mini-value mini-value-big" id="mini-todo-value">0</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- STATISTICS VIEW -->
+    <section class="view" id="view-stats">
+      <section class="panel">
+        <div class="stats-head">
+          <h2>Statistics</h2>
+          <label class="range-label">
+            Range
+            <select id="range-select">
+              <option value="7">Past 7 days</option>
+              <option value="30" selected>Past 30 days</option>
+              <option value="90">Past 90 days</option>
+            </select>
+          </label>
+        </div>
+        <div class="kpi-row">
+          <div class="kpi">
+            <span class="kpi-value" id="kpi-total">0</span>
+            <span class="kpi-label">Total Pomodoros</span>
+          </div>
+          <div class="kpi">
+            <span class="kpi-value" id="kpi-avg">0</span>
+            <span class="kpi-label">Daily Average</span>
+          </div>
+          <div class="kpi">
+            <span class="kpi-value" id="kpi-change">0</span>
+            <span class="kpi-label">Monthly Change</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h3>Pomodoros over time</h3>
+        <div class="chart-wide" id="trend-chart"></div>
+      </section>
+
+      <div class="stats-two">
+        <section class="panel">
+          <h3>Top Tags</h3>
+          <div class="pie-block">
+            <div class="pie" id="top-tags-chart"></div>
+            <ul class="legend" id="top-tags-legend"></ul>
+          </div>
+        </section>
+        <section class="panel">
+          <h3>Best Worktime</h3>
+          <div class="pie-block">
+            <div class="pie" id="worktime-chart"></div>
+            <ul class="legend" id="worktime-legend"></ul>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <!-- SETTINGS VIEW -->
+    <section class="view" id="view-settings">
+      <section class="panel">
+        <h2>Settings</h2>
+        <form id="settings-form" class="settings-form">
+          <label>Daily goal (pomos)
+            <input type="number" min="1" id="set-goal">
+          </label>
+          <label>Default duration (min)
+            <select id="set-duration">
+              <option value="30">30</option>
+              <option value="45">45</option>
+              <option value="60">60</option>
+              <option value="90">90</option>
+            </select>
+          </label>
+          <label>Short rest (min)
+            <input type="number" min="1" id="set-short-rest">
+          </label>
+          <label>Long rest (min)
+            <input type="number" min="1" id="set-long-rest">
+          </label>
+          <label>Long rest every (pomos)
+            <input type="number" min="1" id="set-long-every">
+          </label>
+          <div class="settings-actions">
+            <button type="submit">Save</button>
+            <span id="settings-saved" class="settings-saved" hidden>Saved</span>
+          </div>
+        </form>
+      </section>
+    </section>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
