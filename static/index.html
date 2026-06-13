@@ -4,18 +4,22 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Pomotodo</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
+  <div class="app">
   <header>
     <div class="topbar">
       <div class="brand"><span class="brand-dot"></span> Pomotodo</div>
       <div class="user">awesomeuser ▾</div>
     </div>
     <nav class="nav" id="nav">
-      <button type="button" class="nav-btn active" data-view="main">Main</button>
-      <button type="button" class="nav-btn" data-view="stats">Statistics</button>
-      <button type="button" class="nav-btn" data-view="settings">Settings</button>
+      <button type="button" class="nav-btn active" data-view="main" data-i18n="nav.main">Main</button>
+      <button type="button" class="nav-btn" data-view="stats" data-i18n="nav.stats">Statistics</button>
+      <button type="button" class="nav-btn" data-view="settings" data-i18n="nav.settings">Settings</button>
     </nav>
   </header>
 
@@ -26,94 +30,82 @@
       <div class="main-grid">
         <div class="col">
           <section class="panel timer-panel" id="timer-panel">
-            <h2>Timer</h2>
+            <h2 data-i18n="timer.title">Timer</h2>
+            <span id="phase-pill" class="phase-pill" hidden></span>
             <div class="timer-display" id="timer-display">00:00</div>
-            <p id="timer-mode" class="timer-mode">Ready</p>
-            <p class="current-task">Task: <strong id="current-task">No task selected</strong></p>
-            <div class="timer-controls">
-              <label>
-                Duration
-                <select id="duration-select">
-                  <option value="30">30 min</option>
-                  <option value="45">45 min</option>
-                  <option value="60">60 min</option>
-                  <option value="90">90 min</option>
-                </select>
-              </label>
-            </div>
+            <p id="timer-mode" class="timer-mode" data-i18n="timer.ready">Ready</p>
+            <p class="current-task"><span data-i18n="timer.task">Task:</span> <strong id="current-task" data-i18n="timer.noTask">No task selected</strong></p>
+            <div id="streak-dots" class="streak-dots" hidden></div>
             <div class="timer-buttons">
-              <button type="button" id="start-btn">Start Pomo</button>
-              <button type="button" id="pause-btn" disabled>Pause</button>
-              <button type="button" id="stop-btn" disabled>Stop</button>
+              <button type="button" id="timer-btn" class="primary" data-i18n="timer.start">▶ Start</button>
             </div>
+            <p class="timer-hint" id="timer-hint" hidden>Hold to stop</p>
             <div id="continue-rest-prompt" class="prompt" hidden>
-              <p>Block finished. What next?</p>
-              <button type="button" id="continue-btn">Continue (skip rest)</button>
-              <button type="button" id="rest-btn">Take a rest</button>
-            </div>
-            <div id="rest-prompt" class="prompt" hidden>
-              <p id="rest-label">Rest time</p>
-              <button type="button" id="skip-rest-btn">Skip rest</button>
+              <p data-i18n="prompt.blockFinished">Block finished. What next?</p>
+              <button type="button" id="continue-btn" data-i18n="prompt.continue">Continue (skip rest)</button>
+              <button type="button" id="rest-btn" data-i18n="prompt.takeRest">Take a rest</button>
             </div>
           </section>
 
           <section class="panel" id="today-panel">
-            <h2>Today <span id="today-count" class="today-count"></span></h2>
+            <h2><span data-i18n="today.title">Today</span> <span id="today-count" class="today-count"></span></h2>
             <ul id="today-log" class="today-log"></ul>
           </section>
         </div>
 
         <div class="col">
-          <section class="panel" id="filter-panel">
-            <h2>Filter by tag</h2>
-            <div id="tag-chips" class="chips"></div>
-          </section>
-
           <section class="panel" id="tasks-panel">
             <div class="panel-head">
-              <h2>Todos</h2>
-              <button type="button" class="link-btn" id="clear-completed-btn">Clear completed</button>
+              <h2 data-i18n="todos.title">Todos</h2>
+              <button type="button" class="link-btn" id="clear-completed-btn" data-i18n="todos.clearCompleted">Clear completed</button>
             </div>
-            <form id="add-task-form" class="add-form">
-              <input
-                type="text"
-                id="task-input"
-                placeholder="Add todo —  e.g. PTE #learn *5"
-                autocomplete="off"
-                required
-              >
-              <button type="submit">Add</button>
-            </form>
-            <p class="hint">Use <code>#tag</code> for tags and <code>*N</code> for estimated blocks.</p>
-            <p id="add-task-error" class="error" hidden></p>
             <div id="running-block-banner" class="running-banner" hidden></div>
-            <ul id="task-list"></ul>
+            <button type="button" id="filter-indicator" class="filter-indicator" hidden></button>
+            <div class="bucket">
+              <h3 class="bucket-head"><span data-i18n="todos.today">Today</span> <span id="planned-sum" class="planned-sum"></span></h3>
+              <form id="add-task-form" class="add-row">
+                <input
+                  type="text"
+                  id="task-input"
+                  data-i18n-ph="todos.addPlaceholder"
+                  placeholder="Add a todo —  e.g. PTE #learn *5"
+                  autocomplete="off"
+                  required
+                >
+              </form>
+              <p id="add-task-error" class="error" hidden></p>
+              <ul id="today-list"></ul>
+            </div>
+            <div class="bucket">
+              <h3 class="bucket-head" data-i18n="todos.backlog">Backlog</h3>
+              <ul id="backlog-list"></ul>
+            </div>
           </section>
         </div>
       </div>
 
       <div class="mini-cards" id="mini-cards">
         <button type="button" class="mini-card" data-view="stats" id="card-statistics">
-          <span class="mini-label">Statistics</span>
-          <span class="mini-sub">This week</span>
+          <span class="mini-label" data-i18n="mini.statistics">Statistics</span>
+          <span class="mini-sub" data-i18n="mini.thisWeek">This week</span>
           <div class="mini-chart" id="mini-week"></div>
           <span class="mini-value" id="mini-week-value">0</span>
         </button>
         <div class="mini-card">
-          <span class="mini-label">Goal</span>
-          <span class="mini-sub">Daily goal</span>
+          <span class="mini-label" data-i18n="mini.goal">Goal</span>
+          <span class="mini-sub" data-i18n="mini.dailyGoal">Daily goal</span>
           <div class="mini-chart" id="mini-goal"></div>
           <span class="mini-value" id="mini-goal-value">0 / 0</span>
         </div>
         <button type="button" class="mini-card" data-view="stats" id="card-pomo-history">
-          <span class="mini-label">Pomo History</span>
-          <span class="mini-sub">All time pomos</span>
+          <span class="mini-label" data-i18n="mini.pomoHistory">Pomo History</span>
+          <span class="mini-sub" data-i18n="mini.allTimePomos">All time pomos</span>
           <div class="mini-chart" id="mini-pomo"></div>
           <span class="mini-value" id="mini-pomo-value">0</span>
         </button>
         <div class="mini-card">
-          <span class="mini-label">Todo History</span>
-          <span class="mini-sub">All time todos</span>
+          <span class="mini-label" data-i18n="mini.todoHistory">Todo History</span>
+          <span class="mini-sub" data-i18n="mini.allTimeTodos">All time todos</span>
           <span class="mini-value mini-value-big" id="mini-todo-value">0</span>
         </div>
       </div>
@@ -123,47 +115,47 @@
     <section class="view" id="view-stats">
       <section class="panel">
         <div class="stats-head">
-          <h2>Statistics</h2>
+          <h2 data-i18n="stats.title">Statistics</h2>
           <label class="range-label">
-            Range
+            <span data-i18n="stats.range">Range</span>
             <select id="range-select">
-              <option value="7">Past 7 days</option>
-              <option value="30" selected>Past 30 days</option>
-              <option value="90">Past 90 days</option>
+              <option value="7" data-i18n="stats.past7">Past 7 days</option>
+              <option value="30" selected data-i18n="stats.past30">Past 30 days</option>
+              <option value="90" data-i18n="stats.past90">Past 90 days</option>
             </select>
           </label>
         </div>
         <div class="kpi-row">
           <div class="kpi">
             <span class="kpi-value" id="kpi-total">0</span>
-            <span class="kpi-label">Total Pomodoros</span>
+            <span class="kpi-label" data-i18n="stats.total">Total Pomodoros</span>
           </div>
           <div class="kpi">
             <span class="kpi-value" id="kpi-avg">0</span>
-            <span class="kpi-label">Daily Average</span>
+            <span class="kpi-label" data-i18n="stats.avg">Daily Average</span>
           </div>
           <div class="kpi">
             <span class="kpi-value" id="kpi-change">0</span>
-            <span class="kpi-label">Monthly Change</span>
+            <span class="kpi-label" data-i18n="stats.change">Monthly Change</span>
           </div>
         </div>
       </section>
 
       <section class="panel">
-        <h3>Pomodoros over time</h3>
+        <h3 data-i18n="stats.overTime">Pomodoros over time</h3>
         <div class="chart-wide" id="trend-chart"></div>
       </section>
 
       <div class="stats-two">
         <section class="panel">
-          <h3>Top Tags</h3>
+          <h3 data-i18n="stats.topTags">Top Tags</h3>
           <div class="pie-block">
             <div class="pie" id="top-tags-chart"></div>
             <ul class="legend" id="top-tags-legend"></ul>
           </div>
         </section>
         <section class="panel">
-          <h3>Best Worktime</h3>
+          <h3 data-i18n="stats.bestWorktime">Best Worktime</h3>
           <div class="pie-block">
             <div class="pie" id="worktime-chart"></div>
             <ul class="legend" id="worktime-legend"></ul>
@@ -175,12 +167,12 @@
     <!-- SETTINGS VIEW -->
     <section class="view" id="view-settings">
       <section class="panel">
-        <h2>Settings</h2>
+        <h2 data-i18n="settings.title">Settings</h2>
         <form id="settings-form" class="settings-form">
-          <label>Daily goal (pomos)
+          <label><span data-i18n="settings.dailyGoal">Daily goal (pomos)</span>
             <input type="number" min="1" id="set-goal">
           </label>
-          <label>Default duration (min)
+          <label><span data-i18n="settings.defaultDuration">Default duration (min)</span>
             <select id="set-duration">
               <option value="30">30</option>
               <option value="45">45</option>
@@ -188,24 +180,34 @@
               <option value="90">90</option>
             </select>
           </label>
-          <label>Short rest (min)
+          <label><span data-i18n="settings.shortRest">Short rest (min)</span>
             <input type="number" min="1" id="set-short-rest">
           </label>
-          <label>Long rest (min)
+          <label><span data-i18n="settings.longRest">Long rest (min)</span>
             <input type="number" min="1" id="set-long-rest">
           </label>
-          <label>Long rest every (pomos)
+          <label><span data-i18n="settings.longEvery">Long rest every (pomos)</span>
             <input type="number" min="1" id="set-long-every">
           </label>
+          <label><span data-i18n="settings.language">Language</span>
+            <select id="set-lang">
+              <option value="en">English</option>
+              <option value="zh">中文</option>
+            </select>
+          </label>
+          <label class="settings-check"><input type="checkbox" id="set-autorest"> <span data-i18n="settings.autoStartRest">Auto-start rest</span></label>
+          <label class="settings-check"><input type="checkbox" id="set-sound"> <span data-i18n="settings.sound">Sound</span></label>
           <div class="settings-actions">
-            <button type="submit">Save</button>
-            <span id="settings-saved" class="settings-saved" hidden>Saved</span>
+            <button type="submit" data-i18n="settings.save">Save</button>
+            <span id="settings-saved" class="settings-saved" data-i18n="settings.saved" hidden>Saved</span>
           </div>
         </form>
       </section>
     </section>
   </main>
+  </div>
 
+  <script src="/static/i18n.js"></script>
   <script src="/static/app.js"></script>
 </body>
 </html>

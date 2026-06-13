@@ -8,6 +8,8 @@ const DEFAULT_SETTINGS = {
   shortRest: 5,
   longRest: 20,
   longEvery: 3,
+  autoStartRest: false,
+  soundEnabled: true,
 };
 
 const PALETTE = ["#ff6f61", "#8ed1a0", "#f0a857", "#6aa9e0", "#f6cf6b", "#f4978e"];
@@ -25,39 +27,25 @@ function saveSettings(settings) {
   localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
 }
 
-const ORDER_KEY = "pomotodo.taskOrder";
-
-function loadOrder() {
-  try {
-    const raw = localStorage.getItem(ORDER_KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveOrder() {
-  localStorage.setItem(ORDER_KEY, JSON.stringify(state.order));
-}
-
 const state = {
   activeBlock: null,
   timerInterval: null,
   remainingSeconds: 0,
   mode: "idle",
+  phase: "idle",
   modeLabel: "",
   onComplete: null,
-  completedWorkBlocks: 0,
+  streakBlocks: 0,
   pendingTaskId: null,
   pendingDuration: 30,
   selectedTag: null,
   selectedTaskId: null,
   dashboard: null,
   editingTaskId: null,
+  expandedNoteId: null,
   stats: null,
   view: "main",
   settings: loadSettings(),
-  order: loadOrder(),
   dragId: null,
   rehydrated: false,
 };
@@ -66,22 +54,22 @@ const els = {
   taskInput: document.getElementById("task-input"),
   addTaskForm: document.getElementById("add-task-form"),
   addTaskError: document.getElementById("add-task-error"),
-  tagChips: document.getElementById("tag-chips"),
   currentTask: document.getElementById("current-task"),
-  durationSelect: document.getElementById("duration-select"),
   timerDisplay: document.getElementById("timer-display"),
   timerMode: document.getElementById("timer-mode"),
-  startBtn: document.getElementById("start-btn"),
-  stopBtn: document.getElementById("stop-btn"),
+  timerBtn: document.getElementById("timer-btn"),
+  timerHint: document.getElementById("timer-hint"),
+  timerPanel: document.getElementById("timer-panel"),
+  phasePill: document.getElementById("phase-pill"),
+  streakDots: document.getElementById("streak-dots"),
   continueRestPrompt: document.getElementById("continue-rest-prompt"),
   continueBtn: document.getElementById("continue-btn"),
   restBtn: document.getElementById("rest-btn"),
-  restPrompt: document.getElementById("rest-prompt"),
-  restLabel: document.getElementById("rest-label"),
-  skipRestBtn: document.getElementById("skip-rest-btn"),
-  pauseBtn: document.getElementById("pause-btn"),
   runningBanner: document.getElementById("running-block-banner"),
-  taskList: document.getElementById("task-list"),
+  todayList: document.getElementById("today-list"),
+  backlogList: document.getElementById("backlog-list"),
+  plannedSum: document.getElementById("planned-sum"),
+  filterIndicator: document.getElementById("filter-indicator"),
   activeBanner: document.getElementById("active-banner"),
   clearCompletedBtn: document.getElementById("clear-completed-btn"),
   navBtns: document.querySelectorAll(".nav-btn"),
@@ -114,6 +102,9 @@ const els = {
   setShortRest: document.getElementById("set-short-rest"),
   setLongRest: document.getElementById("set-long-rest"),
   setLongEvery: document.getElementById("set-long-every"),
+  setLang: document.getElementById("set-lang"),
+  setAutorest: document.getElementById("set-autorest"),
+  setSound: document.getElementById("set-sound"),
   settingsSaved: document.getElementById("settings-saved"),
 };
 
@@ -126,6 +117,9 @@ function formatTime(totalSeconds) {
 let audioCtx = null;
 
 function playChime(kind) {
+  if (!state.settings.soundEnabled) {
+    return;
+  }
   try {
     audioCtx =
       audioCtx || new (window.AudioContext || window.webkitAudioContext)();
@@ -179,6 +173,66 @@ function escapeHtml(text) {
   return div.innerHTML;
 }
 
+// Minimal, safe Markdown subset: headings, bold/italic, inline code, links,
+// and unordered/ordered lists. All text is HTML-escaped before transforms and
+// only http(s) links are allowed, so the output is safe to inject.
+function markdownToHtml(src) {
+  const esc = (s) =>
+    s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const inline = (s) =>
+    esc(s)
+      .replace(/`([^`]+)`/g, (_m, c) => `<code>${c}</code>`)
+      .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+      .replace(/(^|[^*])\*([^*\s][^*]*)\*/g, "$1<em>$2</em>")
+      .replace(/_([^_]+)_/g, "<em>$1</em>")
+      .replace(
+        /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g,
+        (_m, txt, url) =>
+          `<a href="${url}" target="_blank" rel="noopener noreferrer">${txt}</a>`,
+      );
+
+  const out = [];
+  let list = null;
+  const closeList = () => {
+    if (list) {
+      out.push(`</${list}>`);
+      list = null;
+    }
+  };
+  for (const raw of src.replace(/\r\n/g, "\n").split("\n")) {
+    const line = raw.trim();
+    if (!line) {
+      closeList();
+      continue;
+    }
+    let m;
+    if ((m = line.match(/^(#{1,3})\s+(.*)$/))) {
+      closeList();
+      const level = m[1].length + 2;
+      out.push(`<h${level}>${inline(m[2])}</h${level}>`);
+    } else if ((m = line.match(/^[-*]\s+(.*)$/))) {
+      if (list !== "ul") {
+        closeList();
+        list = "ul";
+        out.push("<ul>");
+      }
+      out.push(`<li>${inline(m[1])}</li>`);
+    } else if ((m = line.match(/^\d+\.\s+(.*)$/))) {
+      if (list !== "ol") {
+        closeList();
+        list = "ol";
+        out.push("<ol>");
+      }
+      out.push(`<li>${inline(m[1])}</li>`);
+    } else {
+      closeList();
+      out.push(`<p>${inline(line)}</p>`);
+    }
+  }
+  closeList();
+  return out.join("");
+}
+
 /* ---------- views ---------- */
 
 function showView(name) {
@@ -206,14 +260,60 @@ function clearTimerInterval() {
   }
 }
 
-function setTimerUI(running) {
-  els.startBtn.disabled = running;
-  els.stopBtn.disabled = !running;
-  els.pauseBtn.disabled = !running;
-  els.durationSelect.disabled = running;
-  if (!running) {
-    els.pauseBtn.textContent = "Pause";
+// Single timer button: Start (idle) / Pause (running) / Resume (paused).
+// Hold-to-stop is wired separately in the events section.
+function renderTimerButton() {
+  const btn = els.timerBtn;
+  if (state.mode === "running") {
+    btn.textContent = t("timer.pause");
+    btn.classList.remove("primary");
+    btn.disabled = false;
+  } else if (state.mode === "paused") {
+    btn.textContent = t("timer.resume");
+    btn.classList.remove("primary");
+    btn.disabled = false;
+  } else {
+    btn.textContent = t("timer.start");
+    btn.classList.add("primary");
+    const tasks = state.dashboard ? state.dashboard.tasks : [];
+    const selected = tasks.find((task) => task.id === state.selectedTaskId);
+    btn.disabled = !selected || !!state.activeBlock;
   }
+  renderPhase();
+}
+
+// Visual cue: tomato (work) vs green (rest), driven by state.phase.
+function renderPhase() {
+  const active = state.phase !== "idle";
+  els.timerPanel.classList.toggle("phase-work", state.phase === "work");
+  els.timerPanel.classList.toggle("phase-rest", state.phase === "rest");
+  els.phasePill.hidden = !active;
+  if (active) {
+    els.phasePill.textContent = t(
+      state.phase === "rest" ? "phase.rest" : "phase.work",
+    );
+    els.phasePill.className = `phase-pill phase-pill-${state.phase}`;
+  }
+  els.timerHint.hidden = !active;
+  els.timerHint.textContent = t(
+    state.phase === "rest" ? "timer.holdSkip" : "timer.holdStop",
+  );
+}
+
+// Progress toward the next long rest: longEvery dots, filled per the current streak.
+function renderStreak() {
+  const total = state.settings.longEvery;
+  if (total <= 1) {
+    els.streakDots.hidden = true;
+    return;
+  }
+  els.streakDots.hidden = false;
+  const filled = state.streakBlocks % total;
+  els.streakDots.innerHTML = Array.from(
+    { length: total },
+    (_, i) => `<span class="streak-dot${i < filled ? " on" : ""}"></span>`,
+  ).join("");
+  els.streakDots.title = t("streak.toLongRest", { n: total - filled });
 }
 
 function runTicker() {
@@ -222,7 +322,8 @@ function runTicker() {
     els.timerDisplay.textContent = formatTime(Math.max(state.remainingSeconds, 0));
     if (state.remainingSeconds <= 0) {
       clearTimerInterval();
-      setTimerUI(false);
+      state.mode = "idle";
+      renderTimerButton();
       const done = state.onComplete;
       state.onComplete = null;
       if (done) {
@@ -240,9 +341,8 @@ function startCountdown(seconds, modeLabel, onComplete) {
   state.onComplete = onComplete;
   els.timerMode.textContent = modeLabel;
   els.timerDisplay.textContent = formatTime(state.remainingSeconds);
-  setTimerUI(true);
+  renderTimerButton();
   els.continueRestPrompt.hidden = true;
-  els.restPrompt.hidden = true;
   runTicker();
 }
 
@@ -252,8 +352,8 @@ function pauseTimer() {
   }
   clearTimerInterval();
   state.mode = "paused";
-  els.timerMode.textContent = "Paused";
-  els.pauseBtn.textContent = "Resume";
+  els.timerMode.textContent = t("timer.paused");
+  renderTimerButton();
 }
 
 function resumeTimer() {
@@ -262,8 +362,27 @@ function resumeTimer() {
   }
   state.mode = "running";
   els.timerMode.textContent = state.modeLabel;
-  els.pauseBtn.textContent = "Pause";
+  renderTimerButton();
   runTicker();
+}
+
+// Hold/Esc: work phase → discard the block (incomplete, uncounted);
+// rest phase → skip the rest to zero → Ready.
+async function stopTimer() {
+  if (state.phase === "idle") {
+    return;
+  }
+  clearTimerInterval();
+  if (state.phase === "rest") {
+    state.phase = "idle";
+    state.mode = "idle";
+    els.timerMode.textContent = t("timer.ready");
+    renderTimerButton();
+    return;
+  }
+  state.mode = "idle";
+  renderTimerButton();
+  await finishBlock(false);
 }
 
 function updateTimerControls() {
@@ -282,10 +401,8 @@ function updateTimerControls() {
     }
   }
   const selected = tasks.find((task) => task.id === state.selectedTaskId);
-  els.currentTask.textContent = selected ? selected.name : "No task selected";
-  if (!state.activeBlock && state.mode === "idle") {
-    els.startBtn.disabled = !selected;
-  }
+  els.currentTask.textContent = selected ? selected.name : t("timer.noTask");
+  renderTimerButton();
   renderActiveBanner(selected);
 }
 
@@ -302,31 +419,6 @@ function renderActiveBanner(selected) {
 }
 
 /* ---------- tasks ---------- */
-
-function renderTagChips(tags) {
-  els.tagChips.innerHTML = "";
-  const allChip = document.createElement("button");
-  allChip.type = "button";
-  allChip.className = `chip${state.selectedTag === null ? " active" : ""}`;
-  allChip.textContent = "All";
-  allChip.addEventListener("click", () => {
-    state.selectedTag = null;
-    renderAll();
-  });
-  els.tagChips.appendChild(allChip);
-
-  for (const tagInfo of tags) {
-    const chip = document.createElement("button");
-    chip.type = "button";
-    chip.className = `chip${state.selectedTag === tagInfo.tag ? " active" : ""}`;
-    chip.textContent = tagInfo.tag;
-    chip.addEventListener("click", () => {
-      state.selectedTag = tagInfo.tag;
-      renderAll();
-    });
-    els.tagChips.appendChild(chip);
-  }
-}
 
 function formatDateTime(iso) {
   if (!iso) {
@@ -352,7 +444,9 @@ function rowHtml(task) {
         `<button type="button" class="tag-chip" data-action="filter" data-tag="${escapeHtml(t)}">#${escapeHtml(t)}</button>`,
     )
     .join(" ");
-  const toggleTitle = task.status === "active" ? "Mark done" : "Reopen";
+  const toggleTitle = task.status === "active" ? t("row.markDone") : t("row.reopen");
+  const moveTarget = task.bucket === "backlog" ? "today" : "backlog";
+  const moveIcon = task.bucket === "backlog" ? "↥" : "↧";
   return `
     <div class="task-row" data-action="activate" data-id="${task.id}">
       <button type="button" class="status-toggle status-${task.status}" data-action="toggle" data-id="${task.id}" data-status="${task.status}" title="${toggleTitle}">
@@ -360,50 +454,103 @@ function rowHtml(task) {
       </button>
       <span class="task-name">${escapeHtml(task.name)}</span>
       <span class="task-tags">${tags}</span>
-      <span class="block-badge">${task.blocks_done} / ${estimate} <span class="badge-unit">block</span></span>
-      <button type="button" class="row-edit" data-action="edit" data-id="${task.id}" title="Edit">✎</button>
-      <button type="button" class="row-delete" data-action="delete" data-id="${task.id}" data-name="${escapeHtml(task.name)}" title="Delete">🗑</button>
+      <span class="block-badge">(${task.blocks_done}/${estimate})</span>
+      <span class="row-actions">
+        ${
+          task.note && task.note.trim()
+            ? `<button type="button" class="row-note${state.expandedNoteId === task.id ? " active" : ""}" data-action="note" data-id="${task.id}" title="${t("row.showNote")}">🗒</button>`
+            : ""
+        }
+        <button type="button" class="row-move" data-action="move" data-id="${task.id}" data-bucket="${moveTarget}" title="${task.bucket === "backlog" ? t("row.toToday") : t("row.toBacklog")}">${moveIcon}</button>
+        <button type="button" class="row-edit" data-action="edit" data-id="${task.id}" title="${t("row.edit")}">✎</button>
+        <button type="button" class="row-delete" data-action="delete" data-id="${task.id}" data-name="${escapeHtml(task.name)}" title="${t("row.delete")}">🗑</button>
+      </span>
     </div>`;
 }
 
 function editorHtml(task) {
   return `
     <div class="task-editor">
-      <label class="editor-name">Name
+      <label class="editor-name">${t("editor.name")} <span class="editor-note-hint">${t("editor.nameHint")}</span>
         <input type="text" data-field="name" value="${escapeHtml(task.name)}">
       </label>
       <div class="editor-nums">
-        <label>Done
+        <label>${t("editor.done")}
           <input type="number" min="0" data-field="blocks_done" value="${task.blocks_done}">
         </label>
-        <label>Estimate
+        <label>${t("editor.estimate")}
           <input type="number" min="0" data-field="estimate_blocks" value="${task.estimate_blocks ?? ""}">
         </label>
       </div>
+      <label class="editor-note">${t("editor.note")} <span class="editor-note-hint">${t("editor.noteHint")}</span>
+        <textarea data-field="note" rows="4" placeholder="${t("editor.notePlaceholder")}">${escapeHtml(task.note || "")}</textarea>
+      </label>
       <p class="editor-times">
-        <span>Started ${formatDateTime(task.started_at)}</span>
-        <span>Ended ${formatDateTime(task.ended_at)}</span>
+        <span>${t("editor.started", { t: formatDateTime(task.started_at) })}</span>
+        <span>${t("editor.ended", { t: formatDateTime(task.ended_at) })}</span>
       </p>
       <div class="editor-actions">
-        <button type="button" data-action="save" data-id="${task.id}">Save</button>
-        <button type="button" class="ghost" data-action="cancel" data-id="${task.id}">Cancel</button>
+        <button type="button" data-action="save" data-id="${task.id}">${t("editor.save")}</button>
+        <button type="button" class="ghost" data-action="cancel" data-id="${task.id}">${t("editor.cancel")}</button>
       </div>
     </div>`;
 }
 
-// Apply the client-side order (localStorage) to the buffered tasks. Unknown ids
-// (newly created) sort to the top in server order. Order persists locally only.
-function orderedTasks() {
-  const index = new Map(state.order.map((id, i) => [id, i]));
-  const ordered = [...state.dashboard.tasks].sort((a, b) => {
-    const ia = index.has(a.id) ? index.get(a.id) : -1;
-    const ib = index.has(b.id) ? index.get(b.id) : -1;
-    return ia - ib;
-  });
-  // Re-canonicalise: prune deleted ids, record new ones.
-  state.order = ordered.map((t) => t.id);
-  saveOrder();
-  return ordered;
+// Order is owned by the server (tasks.sort_order, per bucket). Sort the buffered
+// tasks of one bucket by it, tie-breaking on id for stability.
+function tasksInBucket(bucket) {
+  return state.dashboard.tasks
+    .filter((task) =>
+      bucket === "backlog" ? task.bucket === "backlog" : task.bucket !== "backlog",
+    )
+    .sort((a, b) => a.sort_order - b.sort_order || a.id - b.id);
+}
+
+function taskItem(task, draggable) {
+  const data = state.dashboard;
+  const li = document.createElement("li");
+  li.className = "task-item";
+  li.dataset.id = task.id;
+  if (draggable && state.editingTaskId !== task.id) {
+    li.draggable = true;
+  }
+  if (data.running_block && data.running_block.task_id === task.id) {
+    li.classList.add("running");
+  }
+  if (task.status === "done") {
+    li.classList.add("is-done");
+  }
+  if (task.id === state.selectedTaskId) {
+    li.classList.add("active");
+  }
+  li.innerHTML =
+    state.editingTaskId === task.id ? editorHtml(task) : rowHtml(task);
+  return li;
+}
+
+function fillBucket(listEl, tasks, draggable) {
+  listEl.innerHTML = "";
+  if (!tasks.length) {
+    const li = document.createElement("li");
+    li.className = "bucket-empty";
+    li.textContent = t("todos.empty");
+    listEl.appendChild(li);
+    return;
+  }
+  for (const task of tasks) {
+    listEl.appendChild(taskItem(task, draggable));
+    if (
+      state.expandedNoteId === task.id &&
+      task.note &&
+      task.note.trim() &&
+      state.editingTaskId !== task.id
+    ) {
+      const panel = document.createElement("li");
+      panel.className = "note-panel";
+      panel.innerHTML = markdownToHtml(task.note);
+      listEl.appendChild(panel);
+    }
+  }
 }
 
 function renderTaskList() {
@@ -411,36 +558,48 @@ function renderTaskList() {
     return;
   }
   // Preserve an open editor against a background sync so typing isn't clobbered.
-  if (state.editingTaskId !== null && els.taskList.querySelector(".task-editor")) {
+  if (
+    state.editingTaskId !== null &&
+    (els.todayList.querySelector(".task-editor") ||
+      els.backlogList.querySelector(".task-editor"))
+  ) {
     return;
   }
-  const data = state.dashboard;
-  const ordered = orderedTasks();
-  const visible = state.selectedTag
-    ? ordered.filter((task) => task.tags.includes(state.selectedTag))
-    : ordered;
+  const todayTasks = tasksInBucket("today");
+  const backlogTasks = tasksInBucket("backlog");
+
+  // Planned sum: all Today tasks, ignoring the active tag filter.
+  const planned = todayTasks.reduce(
+    (sum, task) => sum + (task.estimate_blocks || 0),
+    0,
+  );
+  els.plannedSum.textContent = t("todos.planned", {
+    n: planned,
+    unit: plural("block", planned),
+  });
+
+  const matches = (task) =>
+    !state.selectedTag || task.tags.includes(state.selectedTag);
   const canDrag = !state.selectedTag && state.editingTaskId === null;
-  els.taskList.innerHTML = "";
-  for (const task of visible) {
-    const li = document.createElement("li");
-    li.className = "task-item";
-    li.dataset.id = task.id;
-    if (canDrag && state.editingTaskId !== task.id) {
-      li.draggable = true;
-    }
-    if (data.running_block && data.running_block.task_id === task.id) {
-      li.classList.add("running");
-    }
-    if (task.status === "done") {
-      li.classList.add("is-done");
-    }
-    if (task.id === state.selectedTaskId) {
-      li.classList.add("active");
-    }
-    li.innerHTML =
-      state.editingTaskId === task.id ? editorHtml(task) : rowHtml(task);
-    els.taskList.appendChild(li);
+
+  els.filterIndicator.hidden = !state.selectedTag;
+  if (state.selectedTag) {
+    const tag = state.selectedTag;
+    const summary = (state.dashboard.tags || []).find((t) => t.tag === tag);
+    const done = summary ? summary.blocks : 0;
+    // Planned across every task carrying the tag (Today + Backlog).
+    const tagPlanned = state.dashboard.tasks
+      .filter((t) => t.tags.includes(tag))
+      .reduce((sum, t) => sum + (t.estimate_blocks || 0), 0);
+    els.filterIndicator.innerHTML =
+      `<span class="fi-tag">#${escapeHtml(tag)}</span>` +
+      `<span class="fi-stat">${t("filter.done", { n: done })}</span>` +
+      `<span class="fi-stat">${t("filter.planned", { n: tagPlanned })}</span>` +
+      `<span class="fi-x">✕</span>`;
   }
+
+  fillBucket(els.todayList, todayTasks.filter(matches), canDrag);
+  fillBucket(els.backlogList, backlogTasks.filter(matches), false);
 }
 
 function renderDashboard() {
@@ -448,13 +607,16 @@ function renderDashboard() {
     return;
   }
   const data = state.dashboard;
-  renderTagChips(data.tags);
 
   if (data.running_block) {
     const rb = data.running_block;
     els.runningBanner.hidden = false;
     els.runningBanner.textContent =
-      `Running: ${rb.task_name} (${rb.duration_min} min block started ${rb.started_at})`;
+      t("running.banner", {
+        name: rb.task_name,
+        min: rb.duration_min,
+        time: rb.started_at,
+      });
   } else {
     els.runningBanner.hidden = true;
   }
@@ -507,6 +669,7 @@ function maybeRehydrateTimer() {
     duration_min: rb.duration_min,
     durationMin: rb.duration_min,
   };
+  state.phase = "work";
   state.selectedTaskId = rb.task_id;
   const elapsedSec = (Date.now() - new Date(rb.started_at).getTime()) / 1000;
   const remaining = Math.round(rb.duration_min * 60 - elapsedSec);
@@ -516,7 +679,7 @@ function maybeRehydrateTimer() {
     finishBlock(true);
     return;
   }
-  startCountdown(remaining, `Working on block #${rb.id}`, () => {
+  startCountdown(remaining, t("timer.working", { id: rb.id }), () => {
     playChime("work");
     finishBlock(true);
   });
@@ -658,7 +821,7 @@ function legendHtml(slices) {
         `<li><span class="dot" style="background:${s.color}"></span>${escapeHtml(s.label)} <strong>${s.value}</strong></li>`,
     )
     .join("");
-  return items || `<li class="log-empty">No data yet.</li>`;
+  return items || `<li class="log-empty">${t("stats.noData")}</li>`;
 }
 
 /* ---------- today log + mini cards ---------- */
@@ -672,7 +835,10 @@ function renderTodayLog() {
     (b) => localDayKey(new Date(b.started_at)) === todayKey,
   );
   els.todayCount.textContent = today.length
-    ? `· Finished ${today.length} ${today.length === 1 ? "pomo" : "pomos"}`
+    ? t("today.finished", {
+        n: today.length,
+        unit: plural("pomo", today.length),
+      })
     : "";
 
   const groups = new Map();
@@ -711,7 +877,7 @@ function renderTodayLog() {
           </li>`;
         })
         .join("")
-    : `<li class="log-empty">No finished pomos today.</li>`;
+    : `<li class="log-empty">${t("today.empty")}</li>`;
 }
 
 function renderMiniCards() {
@@ -780,10 +946,10 @@ function renderStats() {
   els.topTagsLegend.innerHTML = legendHtml(tagSlices);
 
   const buckets = [
-    { label: "Morning (6–12)", value: 0, color: "#f6cf6b" },
-    { label: "Afternoon (12–18)", value: 0, color: "#ff6f61" },
-    { label: "Evening (18–24)", value: 0, color: "#6aa9e0" },
-    { label: "Night (0–6)", value: 0, color: "#8ed1a0" },
+    { label: t("worktime.morning"), value: 0, color: "#f6cf6b" },
+    { label: t("worktime.afternoon"), value: 0, color: "#ff6f61" },
+    { label: t("worktime.evening"), value: 0, color: "#6aa9e0" },
+    { label: t("worktime.night"), value: 0, color: "#8ed1a0" },
   ];
   for (const b of windowBlocks) {
     const h = new Date(b.started_at).getHours();
@@ -805,8 +971,9 @@ async function startBlock(taskId, durationMin) {
     ...block,
     durationMin,
   };
-  els.timerMode.textContent = `Working on block #${block.id}`;
-  startCountdown(durationMin * 60, `Working on block #${block.id}`, () => {
+  state.phase = "work";
+  els.timerMode.textContent = t("timer.working", { id: block.id });
+  startCountdown(durationMin * 60, t("timer.working", { id: block.id }), () => {
     playChime("work");
     finishBlock(true);
   });
@@ -817,51 +984,87 @@ async function finishBlock(completed) {
     return;
   }
   const block = state.activeBlock;
-  state.activeBlock = null;
-  await api(`/api/blocks/${block.id}`, {
-    method: "PATCH",
-    body: JSON.stringify({ completed }),
-  });
-  if (completed) {
-    state.completedWorkBlocks += 1;
+  // End the block server-side first; only clear local state on success so a failed
+  // PATCH can't leave an open server block while the client starts another.
+  try {
+    await api(`/api/blocks/${block.id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ completed }),
+    });
+  } catch (error) {
+    els.timerMode.textContent = t("err.endBlock", { msg: error.message });
+    renderTimerButton();
+    return;
   }
+  state.activeBlock = null;
+  state.phase = "idle";
+  if (!completed) {
+    // Discard breaks the streak and offers no rest — straight back to Ready.
+    state.streakBlocks = 0;
+    els.timerMode.textContent = t("timer.ready");
+    renderTimerButton();
+    renderStreak();
+    await syncNow();
+    return;
+  }
+  state.streakBlocks += 1;
   state.pendingTaskId = block.task_id;
   state.pendingDuration = block.durationMin;
-  els.timerMode.textContent = "Block ended";
-  els.continueRestPrompt.hidden = false;
+  els.timerMode.textContent = t("timer.blockEnded");
+  renderTimerButton();
+  renderStreak();
   await syncNow();
+  if (state.settings.autoStartRest) {
+    startRest();
+  } else {
+    els.continueRestPrompt.hidden = false;
+  }
 }
 
 function restDurationMinutes() {
   const { longEvery, longRest, shortRest } = state.settings;
-  return state.completedWorkBlocks % longEvery === 0 ? longRest : shortRest;
+  return state.streakBlocks % longEvery === 0 ? longRest : shortRest;
 }
 
 function startRest() {
   const minutes = restDurationMinutes();
   const isLong = minutes === state.settings.longRest;
-  els.restLabel.textContent = `${isLong ? "Long" : "Short"} rest — ${minutes} min`;
+  const label = isLong
+    ? t("timer.longRest", { min: minutes })
+    : t("timer.shortRest", { min: minutes });
   els.continueRestPrompt.hidden = true;
-  els.restPrompt.hidden = false;
-  startCountdown(minutes * 60, "Resting", () => {
+  state.phase = "rest";
+  startCountdown(minutes * 60, label, () => {
     playChime("rest");
-    els.restPrompt.hidden = true;
-    els.timerMode.textContent = "Ready";
+    state.phase = "idle";
     state.mode = "idle";
+    els.timerMode.textContent = t("timer.ready");
+    renderTimerButton();
   });
 }
 
 /* ---------- settings ---------- */
 
 function applySettingsToControls() {
-  els.durationSelect.value = String(state.settings.defaultDuration);
   state.pendingDuration = state.settings.defaultDuration;
   els.setGoal.value = state.settings.dailyGoal;
   els.setDuration.value = String(state.settings.defaultDuration);
   els.setShortRest.value = state.settings.shortRest;
   els.setLongRest.value = state.settings.longRest;
   els.setLongEvery.value = state.settings.longEvery;
+  els.setLang.value = getLang();
+  els.setAutorest.checked = state.settings.autoStartRest;
+  els.setSound.checked = state.settings.soundEnabled;
+  renderStreak();
 }
+
+/* ---------- language ---------- */
+
+els.setLang.addEventListener("change", () => {
+  setLang(els.setLang.value);
+  applyTranslations();
+  renderAll();
+});
 
 /* ---------- events ---------- */
 
@@ -891,9 +1094,9 @@ els.addTaskForm.addEventListener("submit", async (event) => {
   }
 });
 
-els.startBtn.addEventListener("click", async () => {
+async function startSelectedBlock() {
   const taskId = state.selectedTaskId;
-  const durationMin = Number(els.durationSelect.value);
+  const durationMin = state.settings.defaultDuration;
   if (!taskId) {
     return;
   }
@@ -902,21 +1105,55 @@ els.startBtn.addEventListener("click", async () => {
   } catch (error) {
     els.timerMode.textContent = error.message;
   }
+}
+
+// Hold (≥550ms) ends the block; a held press suppresses the trailing click so a
+// stop doesn't also pause/resume.
+let holdTimer = null;
+let didHold = false;
+
+els.timerBtn.addEventListener("pointerdown", () => {
+  didHold = false;
+  if (state.phase === "idle") {
+    return;
+  }
+  holdTimer = setTimeout(() => {
+    holdTimer = null;
+    didHold = true;
+    stopTimer();
+  }, 550);
 });
 
-els.pauseBtn.addEventListener("click", () => {
-  if (state.mode === "paused") {
-    resumeTimer();
-  } else {
-    pauseTimer();
+function cancelHold() {
+  if (holdTimer) {
+    clearTimeout(holdTimer);
+    holdTimer = null;
+  }
+}
+
+els.timerBtn.addEventListener("pointerup", cancelHold);
+els.timerBtn.addEventListener("pointerleave", cancelHold);
+els.timerBtn.addEventListener("pointercancel", cancelHold);
+
+// Keyboard path to stop (hold-to-stop is pointer-only): Escape ends an active block.
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && state.phase !== "idle") {
+    stopTimer();
   }
 });
 
-els.stopBtn.addEventListener("click", () => {
-  clearTimerInterval();
-  setTimerUI(false);
-  const completed = state.remainingSeconds <= 0;
-  finishBlock(completed);
+els.timerBtn.addEventListener("click", () => {
+  if (didHold) {
+    didHold = false;
+    return;
+  }
+  if (state.mode === "running") {
+    pauseTimer();
+  } else if (state.mode === "paused") {
+    resumeTimer();
+  } else {
+    startSelectedBlock();
+  }
 });
 
 els.continueBtn.addEventListener("click", async () => {
@@ -930,18 +1167,10 @@ els.restBtn.addEventListener("click", () => {
   startRest();
 });
 
-els.skipRestBtn.addEventListener("click", () => {
-  clearTimerInterval();
-  els.restPrompt.hidden = true;
-  els.timerMode.textContent = "Ready";
-  state.mode = "idle";
-  setTimerUI(false);
-});
-
 els.rangeSelect.addEventListener("change", renderStats);
 
 els.clearCompletedBtn.addEventListener("click", async () => {
-  if (!window.confirm("Delete all completed todos? This removes their pomo history too.")) {
+  if (!window.confirm(t("confirm.clearCompleted"))) {
     return;
   }
   if (state.dashboard) {
@@ -960,6 +1189,8 @@ els.settingsForm.addEventListener("submit", (event) => {
     shortRest: Math.max(1, Number(els.setShortRest.value) || DEFAULT_SETTINGS.shortRest),
     longRest: Math.max(1, Number(els.setLongRest.value) || DEFAULT_SETTINGS.longRest),
     longEvery: Math.max(1, Number(els.setLongEvery.value) || DEFAULT_SETTINGS.longEvery),
+    autoStartRest: els.setAutorest.checked,
+    soundEnabled: els.setSound.checked,
   };
   saveSettings(state.settings);
   applySettingsToControls();
@@ -970,7 +1201,12 @@ els.settingsForm.addEventListener("submit", (event) => {
   }, 1500);
 });
 
-els.taskList.addEventListener("click", async (event) => {
+els.filterIndicator.addEventListener("click", () => {
+  state.selectedTag = null;
+  renderAll();
+});
+
+async function handleTaskClick(event) {
   const target = event.target.closest("[data-action]");
   if (!target) {
     return;
@@ -979,8 +1215,40 @@ els.taskList.addEventListener("click", async (event) => {
   const taskId = Number(target.dataset.id);
 
   if (action === "filter") {
-    state.selectedTag = target.dataset.tag;
+    // Click the active tag again to clear; otherwise filter to it.
+    state.selectedTag =
+      state.selectedTag === target.dataset.tag ? null : target.dataset.tag;
     renderAll();
+    return;
+  }
+
+  if (action === "move") {
+    const bucket = target.dataset.bucket;
+    const task = state.dashboard?.tasks.find((t) => t.id === taskId);
+    if (!task) {
+      return;
+    }
+    const previous = task.bucket;
+    task.bucket = bucket;
+    renderAll();
+    try {
+      await api(`/api/tasks/${taskId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ bucket }),
+      });
+    } catch (error) {
+      task.bucket = previous;
+      renderAll();
+      window.alert(t("err.move", { msg: error.message }));
+      return;
+    }
+    scheduleSync();
+    return;
+  }
+
+  if (action === "note") {
+    state.expandedNoteId = state.expandedNoteId === taskId ? null : taskId;
+    renderTaskList();
     return;
   }
 
@@ -993,7 +1261,7 @@ els.taskList.addEventListener("click", async (event) => {
 
   if (action === "delete") {
     const name = target.dataset.name || "this todo";
-    if (!window.confirm(`Delete "${name}"? This removes its pomo history too.`)) {
+    if (!window.confirm(t("confirm.deleteTask", { name }))) {
       return;
     }
     if (state.selectedTaskId === taskId) {
@@ -1053,6 +1321,7 @@ els.taskList.addEventListener("click", async (event) => {
     if (estimate !== "") {
       body.estimate_blocks = Number(estimate);
     }
+    body.note = editor.querySelector("[data-field='note']").value;
     try {
       await api(`/api/tasks/${taskId}`, {
         method: "PATCH",
@@ -1064,11 +1333,30 @@ els.taskList.addEventListener("click", async (event) => {
       window.alert(error.message);
     }
   }
-});
+}
 
-/* ---------- drag to reorder (frontend-only) ---------- */
+els.todayList.addEventListener("click", handleTaskClick);
+els.backlogList.addEventListener("click", handleTaskClick);
 
-els.taskList.addEventListener("dragstart", (event) => {
+// In the inline editor: Enter saves, Shift+Enter inserts a newline (note textarea).
+function handleEditorKeydown(event) {
+  if (event.key !== "Enter" || event.shiftKey) {
+    return;
+  }
+  const editor = event.target.closest(".task-editor");
+  if (!editor) {
+    return;
+  }
+  event.preventDefault();
+  editor.querySelector("[data-action='save']")?.click();
+}
+
+els.todayList.addEventListener("keydown", handleEditorKeydown);
+els.backlogList.addEventListener("keydown", handleEditorKeydown);
+
+/* ---------- drag to reorder (frontend-only, Today only) ---------- */
+
+els.todayList.addEventListener("dragstart", (event) => {
   const li = event.target.closest(".task-item");
   if (!li) {
     return;
@@ -1078,30 +1366,30 @@ els.taskList.addEventListener("dragstart", (event) => {
   event.dataTransfer.effectAllowed = "move";
 });
 
-els.taskList.addEventListener("dragover", (event) => {
+els.todayList.addEventListener("dragover", (event) => {
   if (state.dragId === null) {
     return;
   }
   event.preventDefault();
   const over = event.target.closest(".task-item");
-  const dragging = els.taskList.querySelector(".task-item.dragging");
+  const dragging = els.todayList.querySelector(".task-item.dragging");
   if (!over || !dragging || over === dragging) {
     return;
   }
   const rect = over.getBoundingClientRect();
   const after = event.clientY - rect.top > rect.height / 2;
-  els.taskList.insertBefore(dragging, after ? over.nextSibling : over);
+  els.todayList.insertBefore(dragging, after ? over.nextSibling : over);
 });
 
-els.taskList.addEventListener("drop", (event) => {
+els.todayList.addEventListener("drop", (event) => {
   event.preventDefault();
   finishDrag();
 });
 
-els.taskList.addEventListener("dragend", finishDrag);
+els.todayList.addEventListener("dragend", finishDrag);
 
-function finishDrag() {
-  const dragging = els.taskList.querySelector(".task-item.dragging");
+async function finishDrag() {
+  const dragging = els.todayList.querySelector(".task-item.dragging");
   if (dragging) {
     dragging.classList.remove("dragging");
   }
@@ -1109,16 +1397,32 @@ function finishDrag() {
     return;
   }
   state.dragId = null;
-  // Persist the new on-screen order locally; merge ahead of any hidden/filtered ids.
-  const shown = [...els.taskList.querySelectorAll(".task-item")].map((li) =>
+  const shown = [...els.todayList.querySelectorAll(".task-item")].map((li) =>
     Number(li.dataset.id),
   );
-  const rest = state.order.filter((id) => !shown.includes(id));
-  state.order = [...shown, ...rest];
-  saveOrder();
+  // Optimistically apply the on-screen order, then persist it to the server.
+  // Persist immediately (not via the debounced sync) so the next reconcile reads
+  // the new order rather than overwriting the drag.
+  shown.forEach((id, index) => {
+    const task = state.dashboard.tasks.find((t) => t.id === id);
+    if (task) {
+      task.sort_order = index;
+    }
+  });
   renderAll();
+  try {
+    await api("/api/tasks/order", {
+      method: "PATCH",
+      body: JSON.stringify({ bucket: "today", task_ids: shown }),
+    });
+    await syncNow();
+  } catch (error) {
+    window.alert(t("err.saveOrder", { msg: error.message }));
+    await syncNow();
+  }
 }
 
+applyTranslations();
 applySettingsToControls();
 syncNow();
 setInterval(scheduleSync, SYNC_MS);

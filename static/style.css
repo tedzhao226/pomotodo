@@ -5,12 +5,12 @@
 }
 
 :root {
-  --bg: #f7f7f5;
+  --bg: #f3f2ef;
   --surface: #ffffff;
   --ink: #6b6b6b;
-  --ink-strong: #4f4f4f;
-  --muted: #b3b3b3;
-  --line: #ededed;
+  --ink-strong: #4a4a4a;
+  --muted: #b0aeaa;
+  --line: #ececea;
   --tomato: #ff6f61;
   --tomato-dark: #f0594b;
   --pink: #f4978e;
@@ -22,15 +22,32 @@
   --yellow-line: #f0e2a6;
   --blue: #6aa9e0;
   --orange: #f0a857;
+  --font: "Quicksand", ui-rounded, "SF Pro Rounded", system-ui, -apple-system, sans-serif;
+  --shadow-card: 0 1px 2px rgba(40, 35, 30, 0.04), 0 12px 36px rgba(40, 35, 30, 0.07);
 }
 
 body {
   margin: 0;
-  font-family: "Maple Mono NF", "Maple Mono", ui-monospace, "JetBrains Mono", Menlo, monospace;
+  font-family: var(--font);
   font-weight: 500;
-  background: var(--bg);
+  background:
+    radial-gradient(1200px 600px at 50% -10%, #faf3ef 0%, rgba(250, 243, 239, 0) 60%),
+    var(--bg);
+  background-attachment: fixed;
   color: var(--ink);
   line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---------- app shell ---------- */
+.app {
+  max-width: 1040px;
+  margin: 28px auto 40px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  overflow: hidden;
+  box-shadow: var(--shadow-card);
 }
 
 /* ---------- header ---------- */
@@ -40,12 +57,10 @@ header {
 }
 
 .topbar {
-  max-width: 1040px;
-  margin: 0 auto;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 1.1rem 1.5rem 0.9rem;
+  padding: 1.1rem 1.6rem 0.9rem;
 }
 
 .brand {
@@ -71,18 +86,19 @@ header {
 }
 
 .nav {
-  max-width: 1040px;
-  margin: 0 auto;
   display: flex;
-  gap: 1.5rem;
-  padding: 0 1.5rem;
+  gap: 1.6rem;
+  padding: 0 1.6rem;
+  border-bottom: 1px solid var(--line);
 }
 
 .nav-btn {
   background: transparent;
   border: none;
+  border-radius: 0;
   border-bottom: 2px solid transparent;
-  padding: 0.7rem 0;
+  margin-bottom: -1px;
+  padding: 0.8rem 0;
   font-family: inherit;
   font-weight: 600;
   font-size: 0.92rem;
@@ -90,7 +106,8 @@ header {
   cursor: pointer;
 }
 
-.nav-btn:hover {
+.nav-btn:hover:not(:disabled) {
+  background: transparent;
   color: var(--ink-strong);
 }
 
@@ -101,9 +118,7 @@ header {
 
 /* ---------- layout ---------- */
 main {
-  max-width: 1040px;
-  margin: 0 auto;
-  padding: 1.5rem;
+  padding: 1.6rem;
 }
 
 .view {
@@ -129,10 +144,10 @@ main {
 }
 
 .panel {
-  background: var(--surface);
+  background: #fcfbfa;
   border: 1px solid var(--line);
-  border-radius: 12px;
-  padding: 1.1rem 1.25rem;
+  border-radius: 14px;
+  padding: 1.15rem 1.3rem;
 }
 
 .panel h2 {
@@ -208,20 +223,52 @@ button.ghost:hover:not(:disabled) {
   color: var(--tomato);
 }
 
-#add-task-form {
+/* Inline add-todo box, lives at the top of the Today list. */
+.add-row {
   display: flex;
-  gap: 0.5rem;
+  align-items: center;
+  gap: 0.55rem;
+  margin: 0 0 0.7rem;
+  padding: 0.15rem 0.75rem;
+  border: 1.5px solid var(--line);
+  border-radius: 11px;
+  background: #fff;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.add-row:hover {
+  border-color: #e2ded7;
+}
+
+.add-row:focus-within {
+  border-color: var(--tomato);
+  box-shadow: 0 0 0 3px rgba(255, 111, 97, 0.13);
+}
+
+.add-row::before {
+  content: "+";
+  flex: none;
+  color: var(--tomato);
+  font-weight: 700;
+  font-size: 1.15rem;
+  line-height: 1;
 }
 
 #task-input {
   flex: 1;
-  padding: 0.6rem 0.8rem;
-  border: 1px solid var(--line);
-  border-radius: 9px;
+  min-width: 0;
+  padding: 0.55rem 0;
+  border: none;
+  border-radius: 0;
   font-family: inherit;
-  font-size: 1rem;
-  background: #fcfcfb;
+  font-size: 0.95rem;
+  font-weight: 500;
+  background: transparent;
   color: var(--ink-strong);
+}
+
+#task-input:focus {
+  outline: none;
 }
 
 #task-input::placeholder {
@@ -242,6 +289,13 @@ select {
   font-size: 0.95rem;
   background: #fff;
   color: var(--ink-strong);
+  accent-color: var(--green);
+}
+
+input[type="checkbox"] {
+  accent-color: var(--green);
+  width: 16px;
+  height: 16px;
 }
 
 .hint {
@@ -284,33 +338,77 @@ select {
   font-weight: 700;
 }
 
-/* ---------- tag filter chips ---------- */
-.chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem;
+/* ---------- task buckets ---------- */
+.bucket + .bucket {
+  margin-top: 1rem;
 }
 
-.chip {
-  background: #f3f1ec;
-  color: var(--ink);
-  padding: 0.3rem 0.7rem;
-  border-radius: 999px;
+.bucket-head {
+  margin: 0 0 0.3rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.planned-sum {
+  font-size: 0.78rem;
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--muted);
+}
+
+.bucket-empty {
+  list-style: none;
+  padding: 0.5rem 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.filter-indicator[hidden] {
+  display: none;
+}
+
+/* Tag filter summary banner — blue/tag accent, deliberately distinct from the
+   muted Today "Planned N blocks" line. */
+.filter-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.7rem;
+  background: #eaf2fb;
+  border: 1px solid #cfe0f3;
+  color: var(--blue);
+  padding: 0.34rem 0.7rem;
+  border-radius: 10px;
   font-weight: 600;
   font-size: 0.82rem;
 }
 
-.chip:hover:not(:disabled) {
-  background: #e9e6df;
+.fi-tag {
+  font-weight: 700;
+  color: var(--blue);
 }
 
-.chip.active {
-  background: var(--tomato);
-  color: #fff;
+.fi-stat {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--ink-strong);
+  font-variant-numeric: tabular-nums;
 }
 
-.chip.active:hover {
-  background: var(--tomato);
+.fi-stat::before {
+  content: "·";
+  color: #9bb8d8;
+}
+
+.fi-x {
+  margin-left: 0.1rem;
+  color: var(--blue);
+  opacity: 0.7;
 }
 
 /* ---------- timer ---------- */
@@ -325,12 +423,77 @@ select {
   letter-spacing: -0.02em;
   color: var(--ink-strong);
   margin: 0.25rem 0;
+  transition: color 0.2s ease;
 }
 
 .timer-mode {
   margin: 0 0 0.5rem;
   color: var(--muted);
   font-size: 0.9rem;
+}
+
+/* Phase cue: tomato while working, green while resting. */
+.timer-panel.phase-rest .timer-display {
+  color: var(--green-deep);
+}
+
+.timer-panel.phase-work .timer-display {
+  color: var(--tomato);
+}
+
+.phase-pill[hidden] {
+  display: none;
+}
+
+.phase-pill {
+  display: inline-block;
+  margin-bottom: 0.1rem;
+  padding: 0.12rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.phase-pill-work {
+  background: var(--pink-fill);
+  color: var(--tomato-dark);
+}
+
+.phase-pill-rest {
+  background: var(--green-soft, #c7e8cf);
+  color: var(--green-deep);
+}
+
+.settings-check {
+  flex-direction: row !important;
+  align-items: center;
+  gap: 0.5rem !important;
+  color: var(--ink-strong);
+}
+
+/* Progress toward the next long rest. */
+.streak-dots[hidden] {
+  display: none;
+}
+
+.streak-dots {
+  display: flex;
+  justify-content: center;
+  gap: 0.3rem;
+  margin: 0 0 0.9rem;
+}
+
+.streak-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--line);
+}
+
+.streak-dot.on {
+  background: var(--tomato);
 }
 
 .current-task {
@@ -343,56 +506,62 @@ select {
   color: var(--ink-strong);
 }
 
-.timer-controls {
-  display: flex;
-  justify-content: center;
-  gap: 1rem;
-  margin-bottom: 1rem;
-}
-
-.timer-controls label {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.3rem;
-  font-size: 0.75rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--muted);
-}
-
 .timer-buttons {
   display: flex;
   justify-content: center;
-  gap: 0.6rem;
 }
 
-#start-btn {
-  flex: 1;
-  max-width: 220px;
+#timer-btn {
+  width: 100%;
+  max-width: 260px;
+  padding: 0.75rem 1.1rem;
+  touch-action: manipulation;
+  -webkit-user-select: none;
+  user-select: none;
+  font-weight: 700;
+  font-size: 1rem;
   background: #fcfcfb;
   color: var(--ink-strong);
   border: 1px solid var(--line);
-  font-weight: 700;
+  border-radius: 11px;
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.05s ease;
 }
 
-#start-btn:hover:not(:disabled) {
-  background: #fff;
+#timer-btn:hover:not(:disabled) {
   border-color: var(--tomato);
   color: var(--tomato);
 }
 
-#pause-btn,
-#stop-btn {
-  background: transparent;
-  color: var(--muted);
-  border: 1px solid var(--line);
+#timer-btn:active:not(:disabled) {
+  transform: translateY(1px);
 }
 
-#pause-btn:hover:not(:disabled),
-#stop-btn:hover:not(:disabled) {
-  background: #f5f3ef;
-  color: var(--ink-strong);
+#timer-btn.primary {
+  background: var(--tomato);
+  color: #fff;
+  border-color: transparent;
+  box-shadow: 0 6px 16px rgba(255, 111, 97, 0.28);
+}
+
+#timer-btn.primary:hover:not(:disabled) {
+  background: var(--tomato-dark);
+  color: #fff;
+}
+
+#timer-btn.primary:disabled {
+  background: var(--tomato);
+}
+
+.timer-hint {
+  margin: 0.55rem 0 0;
+  text-align: center;
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.timer-hint[hidden] {
+  display: none;
 }
 
 .prompt {
@@ -477,11 +646,9 @@ select {
 }
 
 /* ---------- task list ---------- */
-.add-form {
-  margin-bottom: 0.5rem;
-}
 
-#task-list {
+#today-list,
+#backlog-list {
   list-style: none;
   margin: 0;
   padding: 0;
@@ -567,10 +734,14 @@ select {
   white-space: nowrap;
 }
 
+/* Fixed-width tag column so #tags line up across rows. */
 .task-tags {
+  flex: none;
+  width: 96px;
   display: flex;
-  flex-wrap: wrap;
   gap: 0.3rem;
+  overflow: hidden;
+  white-space: nowrap;
 }
 
 .tag-chip {
@@ -579,6 +750,7 @@ select {
   padding: 0.1rem 0.2rem;
   font-size: 0.82rem;
   font-weight: 700;
+  white-space: nowrap;
 }
 
 .tag-chip:hover:not(:disabled) {
@@ -588,6 +760,7 @@ select {
 
 .block-badge {
   flex: none;
+  width: 52px;
   font-variant-numeric: tabular-nums;
   font-weight: 600;
   font-size: 0.85rem;
@@ -595,9 +768,13 @@ select {
   white-space: nowrap;
 }
 
-.badge-unit {
-  font-weight: 500;
-  font-size: 0.74rem;
+/* Constant-width action area so a row's note button doesn't shift the columns. */
+.row-actions {
+  flex: none;
+  width: 116px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.3rem;
 }
 
 .row-edit,
@@ -617,9 +794,114 @@ select {
   opacity: 0;
 }
 
+.row-move {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 1rem;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+}
+
+.row-note {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+}
+
+.task-row:hover .row-note,
+.task-row:hover .row-move,
 .task-row:hover .row-edit,
 .task-row:hover .row-delete {
   opacity: 1;
+}
+
+.row-note.active {
+  opacity: 1;
+  color: var(--tomato);
+}
+
+.row-note:hover:not(:disabled) {
+  background: #f0ede7;
+  color: var(--tomato);
+}
+
+/* Rendered markdown note under a task row. */
+.note-panel {
+  list-style: none;
+  margin: -0.15rem 0 0.5rem 2.1rem;
+  padding: 0.55rem 0.85rem;
+  border-left: 2px solid var(--tomato);
+  background: #fcfbfa;
+  border-radius: 0 8px 8px 0;
+  font-size: 0.9rem;
+  color: var(--ink);
+}
+
+.note-panel > :first-child {
+  margin-top: 0;
+}
+
+.note-panel > :last-child {
+  margin-bottom: 0;
+}
+
+.note-panel p {
+  margin: 0.3rem 0;
+}
+
+.note-panel h3,
+.note-panel h4,
+.note-panel h5 {
+  margin: 0.55rem 0 0.25rem;
+  color: var(--ink-strong);
+  font-size: 0.95rem;
+}
+
+.note-panel ul,
+.note-panel ol {
+  margin: 0.3rem 0;
+  padding-left: 1.2rem;
+}
+
+.note-panel li {
+  margin: 0.1rem 0;
+}
+
+.note-panel code {
+  background: #f0ede7;
+  padding: 0.05rem 0.3rem;
+  border-radius: 4px;
+  font-size: 0.85em;
+}
+
+.note-panel a {
+  color: var(--blue);
+  font-weight: 600;
+}
+
+.row-move:hover:not(:disabled) {
+  background: #f0ede7;
+  color: var(--tomato);
 }
 
 .row-edit:hover:not(:disabled) {
@@ -663,10 +945,33 @@ select {
   color: var(--ink-strong);
 }
 
-.task-editor input:focus {
+.task-editor input:focus,
+.task-editor textarea:focus {
   outline: none;
   border-color: var(--tomato);
   box-shadow: 0 0 0 3px rgba(255, 111, 97, 0.12);
+}
+
+.task-editor textarea {
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-family: inherit;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  background: #fff;
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--ink-strong);
+  resize: vertical;
+}
+
+.editor-note-hint {
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 500;
+  color: var(--muted);
+  font-size: 0.68rem;
 }
 
 .editor-nums {
@@ -701,9 +1006,9 @@ select {
 .mini-cards {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  background: var(--surface);
+  background: #fcfbfa;
   border: 1px solid var(--line);
-  border-radius: 12px;
+  border-radius: 14px;
   overflow: hidden;
 }
 
@@ -711,14 +1016,15 @@ select {
   border: none;
   border-right: 1px solid var(--line);
   border-radius: 0;
-  background: var(--surface);
-  padding: 1.1rem 1.2rem;
+  background: transparent;
+  padding: 1.15rem 1.3rem;
   display: flex;
   flex-direction: column;
   gap: 0.15rem;
   text-align: left;
   color: var(--ink-strong);
   cursor: default;
+  transition: background 0.15s ease;
 }
 
 .mini-card:last-child {
@@ -730,7 +1036,7 @@ button.mini-card {
 }
 
 button.mini-card:hover {
-  background: #faf8f4;
+  background: #fff;
 }
 
 .mini-label {
@@ -907,8 +1213,13 @@ button.mini-card:hover {
 /* ---------- settings ---------- */
 .settings-form {
   display: grid;
-  gap: 0.85rem;
-  max-width: 360px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem 1.5rem;
+  max-width: 620px;
+}
+
+.settings-actions {
+  grid-column: 1 / -1;
 }
 
 .settings-form label {
@@ -963,11 +1274,6 @@ button.mini-card:hover {
 }
 
 @media (max-width: 600px) {
-  .timer-controls {
-    flex-direction: column;
-    align-items: center;
-  }
-
   .kpi-row {
     grid-template-columns: 1fr;
   }

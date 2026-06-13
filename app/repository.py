@@ -1,32 +1,38 @@
-import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime
+
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session
+
+from app.models import Block, Task, TaskTag, utcnow
 
 
-def utc_now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+def _iso(value: datetime | None) -> str | None:
+    return value.isoformat() if value is not None else None
 
 
 class Repository:
-    def __init__(self, conn: sqlite3.Connection) -> None:
-        self._conn = conn
+    def __init__(self, session: Session) -> None:
+        self._session = session
 
-    def _tags_for_task(self, task_id: int) -> list[str]:
-        rows = self._conn.execute(
-            "SELECT tag FROM task_tags WHERE task_id = ? ORDER BY tag",
-            (task_id,),
-        ).fetchall()
-        return [row["tag"] for row in rows]
-
-    def _task_row_to_dict(self, row: sqlite3.Row) -> dict:
+    def _task_to_dict(self, task: Task) -> dict:
         return {
-            "id": row["id"],
-            "name": row["name"],
-            "estimate_blocks": row["estimate_blocks"],
-            "blocks_override": row["blocks_override"],
-            "status": row["status"],
-            "created_at": row["created_at"],
-            "tags": self._tags_for_task(row["id"]),
+            "id": task.id,
+            "name": task.name,
+            "estimate_blocks": task.estimate_blocks,
+            "blocks_override": task.blocks_override,
+            "status": task.status,
+            "bucket": task.bucket,
+            "sort_order": task.sort_order,
+            "note": task.note,
+            "created_at": _iso(task.created_at),
+            "tags": [tag.tag for tag in task.tags],
         }
+
+    def _next_sort_order(self, bucket: str) -> int:
+        current_max = self._session.execute(
+            select(func.max(Task.sort_order)).where(Task.bucket == bucket)
+        ).scalar_one_or_none()
+        return 0 if current_max is None else current_max + 1
 
     def create_task(
         self,
@@ -34,251 +40,217 @@ class Repository:
         estimate_blocks: int | None,
         tags: list[str],
     ) -> dict:
-        created_at = utc_now_iso()
-        cursor = self._conn.execute(
-            """
-            INSERT INTO tasks (name, estimate_blocks, status, created_at)
-            VALUES (?, ?, 'active', ?)
-            """,
-            (name, estimate_blocks, created_at),
+        task = Task(
+            name=name,
+            estimate_blocks=estimate_blocks,
+            status="active",
+            bucket="today",
+            sort_order=self._next_sort_order("today"),
+            tags=[TaskTag(tag=tag) for tag in tags],
         )
-        task_id = cursor.lastrowid
-        for tag in tags:
-            self._conn.execute(
-                "INSERT INTO task_tags (task_id, tag) VALUES (?, ?)",
-                (task_id, tag),
-            )
-        row = self._conn.execute(
-            "SELECT * FROM tasks WHERE id = ?",
-            (task_id,),
-        ).fetchone()
-        return self._task_row_to_dict(row)
+        self._session.add(task)
+        self._session.flush()
+        return self._task_to_dict(task)
 
     def list_tasks(self, tag: str | None = None) -> list[dict]:
+        stmt = select(Task)
         if tag:
-            rows = self._conn.execute(
-                """
-                SELECT t.*
-                FROM tasks t
-                INNER JOIN task_tags tt ON t.id = tt.task_id
-                WHERE tt.tag = ?
-                ORDER BY t.created_at DESC
-                """,
-                (tag,),
-            ).fetchall()
-        else:
-            rows = self._conn.execute(
-                "SELECT * FROM tasks ORDER BY created_at DESC",
-            ).fetchall()
-        return [self._task_row_to_dict(row) for row in rows]
+            stmt = stmt.join(Task.tags).where(TaskTag.tag == tag)
+        stmt = stmt.order_by(Task.bucket, Task.sort_order, Task.id)
+        tasks = self._session.execute(stmt).scalars().unique().all()
+        return [self._task_to_dict(task) for task in tasks]
+
+    def _get(self, task_id: int) -> Task | None:
+        return self._session.get(Task, task_id)
 
     def get_task(self, task_id: int) -> dict | None:
-        row = self._conn.execute(
-            "SELECT * FROM tasks WHERE id = ?",
-            (task_id,),
-        ).fetchone()
-        if row is None:
-            return None
-        return self._task_row_to_dict(row)
+        task = self._get(task_id)
+        return self._task_to_dict(task) if task is not None else None
+
+    def task_ids_in_bucket(self, bucket: str) -> set[int]:
+        rows = self._session.execute(
+            select(Task.id).where(Task.bucket == bucket)
+        ).scalars()
+        return set(rows)
 
     def update_task(self, task_id: int, fields: dict) -> dict | None:
-        row = self._conn.execute(
-            "SELECT id FROM tasks WHERE id = ?",
-            (task_id,),
-        ).fetchone()
-        if row is None:
+        task = self._get(task_id)
+        if task is None:
             return None
-        if fields:
-            assignments = ", ".join(f"{column} = ?" for column in fields)
-            self._conn.execute(
-                f"UPDATE tasks SET {assignments} WHERE id = ?",
-                (*fields.values(), task_id),
-            )
-        return self.get_task(task_id)
+        # A bucket change re-homes the task at the end of the target bucket so it
+        # doesn't collide with an existing sort_order.
+        if "bucket" in fields and fields["bucket"] != task.bucket:
+            task.sort_order = self._next_sort_order(fields["bucket"])
+        for column, value in fields.items():
+            setattr(task, column, value)
+        self._session.flush()
+        return self._task_to_dict(task)
+
+    def set_tags(self, task_id: int, tags: list[str]) -> None:
+        task = self._session.get(Task, task_id)
+        if task is None:
+            return
+        task.tags.clear()  # cascade delete-orphan drops the old rows
+        self._session.flush()
+        for tag in dict.fromkeys(tags):
+            task.tags.append(TaskTag(tag=tag))
+        self._session.flush()
+
+    def reorder(self, bucket: str, task_ids: list[int]) -> None:
+        position = {task_id: index for index, task_id in enumerate(task_ids)}
+        tasks = (
+            self._session.execute(select(Task).where(Task.bucket == bucket))
+            .scalars()
+            .all()
+        )
+        for task in tasks:
+            if task.id in position:
+                task.sort_order = position[task.id]
+        self._session.flush()
 
     def delete_task(self, task_id: int) -> bool:
-        row = self._conn.execute(
-            "SELECT id FROM tasks WHERE id = ?",
-            (task_id,),
-        ).fetchone()
-        if row is None:
+        task = self._get(task_id)
+        if task is None:
             return False
-        self._conn.execute("DELETE FROM blocks WHERE task_id = ?", (task_id,))
-        self._conn.execute("DELETE FROM task_tags WHERE task_id = ?", (task_id,))
-        self._conn.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
+        self._session.delete(task)
+        self._session.flush()
         return True
 
     def delete_completed_tasks(self) -> int:
-        ids = [
-            row["id"]
-            for row in self._conn.execute(
-                "SELECT id FROM tasks WHERE status = 'done'"
-            ).fetchall()
-        ]
-        for task_id in ids:
-            self.delete_task(task_id)
-        return len(ids)
+        tasks = (
+            self._session.execute(select(Task).where(Task.status == "done"))
+            .scalars()
+            .all()
+        )
+        for task in tasks:
+            self._session.delete(task)
+        self._session.flush()
+        return len(tasks)
 
     def create_block(self, task_id: int, duration_min: int) -> dict:
-        started_at = utc_now_iso()
-        cursor = self._conn.execute(
-            """
-            INSERT INTO blocks (task_id, duration_min, started_at, ended_at, completed)
-            VALUES (?, ?, ?, NULL, 0)
-            """,
-            (task_id, duration_min, started_at),
-        )
-        block_id = cursor.lastrowid
+        block = Block(task_id=task_id, duration_min=duration_min)
+        self._session.add(block)
+        self._session.flush()
         return {
-            "id": block_id,
-            "task_id": task_id,
-            "duration_min": duration_min,
-            "started_at": started_at,
+            "id": block.id,
+            "task_id": block.task_id,
+            "duration_min": block.duration_min,
+            "started_at": _iso(block.started_at),
         }
 
     def get_block(self, block_id: int) -> dict | None:
-        row = self._conn.execute(
-            "SELECT * FROM blocks WHERE id = ?",
-            (block_id,),
-        ).fetchone()
-        if row is None:
+        block = self._session.get(Block, block_id)
+        if block is None:
             return None
         return {
-            "id": row["id"],
-            "task_id": row["task_id"],
-            "duration_min": row["duration_min"],
-            "started_at": row["started_at"],
-            "ended_at": row["ended_at"],
-            "completed": bool(row["completed"]),
+            "id": block.id,
+            "task_id": block.task_id,
+            "duration_min": block.duration_min,
+            "started_at": _iso(block.started_at),
+            "ended_at": _iso(block.ended_at),
+            "completed": block.completed,
         }
 
     def end_block(self, block_id: int, completed: bool) -> dict | None:
-        row = self._conn.execute(
-            "SELECT id FROM blocks WHERE id = ?",
-            (block_id,),
-        ).fetchone()
-        if row is None:
+        block = self._session.get(Block, block_id)
+        if block is None:
             return None
-        ended_at = utc_now_iso()
-        self._conn.execute(
-            """
-            UPDATE blocks
-            SET ended_at = ?, completed = ?
-            WHERE id = ?
-            """,
-            (ended_at, int(completed), block_id),
-        )
+        block.ended_at = utcnow()
+        block.completed = completed
+        self._session.flush()
         return self.get_block(block_id)
 
     def get_running_block(self) -> dict | None:
-        row = self._conn.execute(
-            """
-            SELECT b.*, t.name AS task_name
-            FROM blocks b
-            INNER JOIN tasks t ON t.id = b.task_id
-            WHERE b.ended_at IS NULL
-            ORDER BY b.started_at DESC
-            LIMIT 1
-            """
-        ).fetchone()
-        if row is None:
+        block = self._session.execute(
+            select(Block)
+            .where(Block.ended_at.is_(None))
+            .order_by(Block.started_at.desc())
+            .limit(1)
+        ).scalar_one_or_none()
+        if block is None:
             return None
         return {
-            "id": row["id"],
-            "task_id": row["task_id"],
-            "task_name": row["task_name"],
-            "duration_min": row["duration_min"],
-            "started_at": row["started_at"],
+            "id": block.id,
+            "task_id": block.task_id,
+            "task_name": block.task.name,
+            "duration_min": block.duration_min,
+            "started_at": _iso(block.started_at),
         }
 
-    def get_task_block_stats(self) -> dict[int, dict[str, int]]:
-        rows = self._conn.execute(
-            """
-            SELECT task_id,
-                   COUNT(*) AS blocks_done,
-                   COALESCE(SUM(duration_min), 0) AS total_minutes,
-                   MIN(started_at) AS started_at,
-                   MAX(ended_at) AS ended_at
-            FROM blocks
-            WHERE ended_at IS NOT NULL
-            GROUP BY task_id
-            """
-        ).fetchall()
+    def get_task_block_stats(self) -> dict[int, dict]:
+        rows = self._session.execute(
+            select(
+                Block.task_id,
+                func.count(Block.id),
+                func.coalesce(func.sum(Block.duration_min), 0),
+                func.min(Block.started_at),
+                func.max(Block.ended_at),
+            )
+            .where(Block.completed.is_(True))
+            .group_by(Block.task_id)
+        ).all()
         return {
-            row["task_id"]: {
-                "blocks_done": row["blocks_done"],
-                "total_minutes": row["total_minutes"],
-                "started_at": row["started_at"],
-                "ended_at": row["ended_at"],
+            row[0]: {
+                "blocks_done": row[1],
+                "total_minutes": row[2],
+                "started_at": _iso(row[3]),
+                "ended_at": _iso(row[4]),
             }
             for row in rows
         }
 
     def get_tag_summaries(self) -> list[dict]:
-        rows = self._conn.execute(
-            """
-            SELECT tt.tag,
-                   COUNT(b.id) AS blocks,
-                   COALESCE(SUM(b.duration_min), 0) AS total_minutes
-            FROM task_tags tt
-            INNER JOIN blocks b ON b.task_id = tt.task_id AND b.ended_at IS NOT NULL
-            GROUP BY tt.tag
-            ORDER BY tt.tag
-            """
-        ).fetchall()
+        rows = self._session.execute(
+            select(
+                TaskTag.tag,
+                func.count(Block.id),
+                func.coalesce(func.sum(Block.duration_min), 0),
+            )
+            .join(Block, Block.task_id == TaskTag.task_id)
+            .where(Block.completed.is_(True))
+            .group_by(TaskTag.tag)
+            .order_by(TaskTag.tag)
+        ).all()
         return [
-            {
-                "tag": row["tag"],
-                "blocks": row["blocks"],
-                "total_minutes": row["total_minutes"],
-            }
+            {"tag": row[0], "blocks": row[1], "total_minutes": row[2]}
             for row in rows
         ]
 
-    def get_completed_blocks(self, since_iso: str) -> list[dict]:
-        rows = self._conn.execute(
-            """
-            SELECT b.started_at, b.ended_at, b.duration_min,
-                   b.task_id, t.name AS task_name
-            FROM blocks b
-            INNER JOIN tasks t ON t.id = b.task_id
-            WHERE b.completed = 1
-              AND b.ended_at IS NOT NULL
-              AND b.started_at >= ?
-            ORDER BY b.started_at
-            """,
-            (since_iso,),
-        ).fetchall()
-        tags_cache: dict[int, list[str]] = {}
-        blocks = []
-        for row in rows:
-            task_id = row["task_id"]
-            if task_id not in tags_cache:
-                tags_cache[task_id] = self._tags_for_task(task_id)
-            blocks.append(
-                {
-                    "started_at": row["started_at"],
-                    "ended_at": row["ended_at"],
-                    "duration_min": row["duration_min"],
-                    "task_id": task_id,
-                    "task_name": row["task_name"],
-                    "tags": tags_cache[task_id],
-                }
+    def get_completed_blocks(self, since: datetime) -> list[dict]:
+        blocks = (
+            self._session.execute(
+                select(Block)
+                .where(
+                    Block.completed.is_(True),
+                    Block.ended_at.is_not(None),
+                    Block.started_at >= since,
+                )
+                .order_by(Block.started_at)
             )
-        return blocks
+            .scalars()
+            .all()
+        )
+        return [
+            {
+                "started_at": _iso(block.started_at),
+                "ended_at": _iso(block.ended_at),
+                "duration_min": block.duration_min,
+                "task_id": block.task_id,
+                "task_name": block.task.name,
+                "tags": [tag.tag for tag in block.task.tags],
+            }
+            for block in blocks
+        ]
 
     def count_completed_blocks(self) -> int:
-        row = self._conn.execute(
-            "SELECT COUNT(*) AS n FROM blocks WHERE completed = 1 AND ended_at IS NOT NULL"
-        ).fetchone()
-        return row["n"]
+        return self._session.execute(
+            select(func.count(Block.id)).where(
+                Block.completed.is_(True), Block.ended_at.is_not(None)
+            )
+        ).scalar_one()
 
     def count_tasks(self, status: str | None = None) -> int:
-        if status is None:
-            row = self._conn.execute("SELECT COUNT(*) AS n FROM tasks").fetchone()
-        else:
-            row = self._conn.execute(
-                "SELECT COUNT(*) AS n FROM tasks WHERE status = ?",
-                (status,),
-            ).fetchone()
-        return row["n"]
+        stmt = select(func.count(Task.id))
+        if status is not None:
+            stmt = stmt.where(Task.status == status)
+        return self._session.execute(stmt).scalar_one()

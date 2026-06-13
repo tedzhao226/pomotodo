@@ -1,0 +1,72 @@
+from datetime import datetime, timezone
+
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy.orm import (
+    DeclarativeBase,
+    Mapped,
+    mapped_column,
+    relationship,
+)
+
+
+def utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+class Base(DeclarativeBase):
+    pass
+
+
+class Task(Base):
+    __tablename__ = "tasks"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(Text)
+    estimate_blocks: Mapped[int | None] = mapped_column(Integer, default=None)
+    blocks_override: Mapped[int | None] = mapped_column(Integer, default=None)
+    status: Mapped[str] = mapped_column(String(16), default="active")
+    bucket: Mapped[str] = mapped_column(String(16), default="today")
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    note: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow
+    )
+
+    tags: Mapped[list["TaskTag"]] = relationship(
+        back_populates="task",
+        cascade="all, delete-orphan",
+        order_by="TaskTag.tag",
+    )
+    blocks: Mapped[list["Block"]] = relationship(
+        back_populates="task", cascade="all, delete-orphan"
+    )
+
+
+class TaskTag(Base):
+    __tablename__ = "task_tags"
+
+    task_id: Mapped[int] = mapped_column(
+        ForeignKey("tasks.id", ondelete="CASCADE"), primary_key=True
+    )
+    tag: Mapped[str] = mapped_column(String(64), primary_key=True)
+
+    task: Mapped[Task] = relationship(back_populates="tags")
+
+
+class Block(Base):
+    __tablename__ = "blocks"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    task_id: Mapped[int] = mapped_column(
+        ForeignKey("tasks.id", ondelete="CASCADE")
+    )
+    duration_min: Mapped[int] = mapped_column(Integer)
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow
+    )
+    ended_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), default=None
+    )
+    completed: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    task: Mapped[Task] = relationship(back_populates="blocks")

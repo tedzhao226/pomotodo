@@ -1,56 +1,41 @@
-import sqlite3
-from pathlib import Path
+from collections.abc import Generator
 
-DB_PATH = Path(__file__).resolve().parent.parent / "pomotodo.db"
+from sqlalchemy import create_engine
+from sqlalchemy.engine import Engine
+from sqlalchemy.orm import Session, sessionmaker
 
+from app.config import get_settings
 
-def get_connection() -> sqlite3.Connection:
-    # check_same_thread=False: FastAPI runs sync endpoints and the get_db
-    # generator in threadpool workers, so a per-request connection may be
-    # opened and closed on different threads. The connection is never shared
-    # between requests, so disabling the same-thread guard is safe here.
-    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON")
-    return conn
+_engine: Engine | None = None
+_SessionLocal: sessionmaker[Session] | None = None
 
 
-def init_schema() -> None:
-    conn = get_connection()
-    try:
-        conn.executescript(
-            """
-            CREATE TABLE IF NOT EXISTS tasks (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL,
-                estimate_blocks INTEGER,
-                blocks_override INTEGER,
-                status TEXT NOT NULL DEFAULT 'active',
-                created_at TEXT NOT NULL
-            );
-
-            CREATE TABLE IF NOT EXISTS task_tags (
-                task_id INTEGER NOT NULL REFERENCES tasks(id),
-                tag TEXT NOT NULL,
-                PRIMARY KEY (task_id, tag)
-            );
-
-            CREATE TABLE IF NOT EXISTS blocks (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                task_id INTEGER NOT NULL REFERENCES tasks(id),
-                duration_min INTEGER NOT NULL,
-                started_at TEXT NOT NULL,
-                ended_at TEXT,
-                completed INTEGER NOT NULL DEFAULT 0
-            );
-            """
+def _ensure_engine() -> None:
+    global _engine, _SessionLocal
+    if _engine is None:
+        _engine = create_engine(
+            get_settings().database_url, pool_pre_ping=True, future=True
         )
-        columns = {
-            row["name"]
-            for row in conn.execute("PRAGMA table_info(tasks)").fetchall()
-        }
-        if "blocks_override" not in columns:
-            conn.execute("ALTER TABLE tasks ADD COLUMN blocks_override INTEGER")
-        conn.commit()
+        _SessionLocal = sessionmaker(
+            bind=_engine, autoflush=False, expire_on_commit=False
+        )
+
+
+def get_engine() -> Engine:
+    _ensure_engine()
+    assert _engine is not None
+    return _engine
+
+
+def get_session() -> Generator[Session, None, None]:
+    _ensure_engine()
+    assert _SessionLocal is not None
+    session = _SessionLocal()
+    try:
+        yield session
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
     finally:
-        conn.close()
+        session.close()

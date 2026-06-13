@@ -13,6 +13,9 @@ class TaskResponse(BaseModel):
     tags: list[str]
     estimate_blocks: int | None
     status: str
+    bucket: str
+    sort_order: int
+    note: str
     created_at: str
 
 
@@ -21,6 +24,13 @@ class UpdateTaskRequest(BaseModel):
     estimate_blocks: int | None = None
     blocks_done: int | None = None
     status: Literal["active", "done"] | None = None
+    bucket: Literal["today", "backlog"] | None = None
+    note: str | None = None
+
+
+class ReorderRequest(BaseModel):
+    bucket: Literal["today", "backlog"]
+    task_ids: list[int]
 
 
 class CreateBlockRequest(BaseModel):
@@ -53,6 +63,9 @@ class DashboardTask(BaseModel):
     tags: list[str]
     estimate_blocks: int | None
     status: str
+    bucket: str
+    sort_order: int
+    note: str
     blocks_done: int
     total_minutes: int
     started_at: str | None = None

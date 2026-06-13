@@ -1,10 +1,11 @@
-import sqlite3
 from collections.abc import Generator
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy.orm import Session
 
-from app.db import get_connection
+from app.db import get_session
+from app.errors import NotFoundError, ValidationError
 from app.repository import Repository
 from app.schemas import (
     BlockResponse,
@@ -13,6 +14,7 @@ from app.schemas import (
     CreateTaskRequest,
     DashboardResponse,
     EndBlockRequest,
+    ReorderRequest,
     StatsResponse,
     TaskResponse,
     UpdateTaskRequest,
@@ -22,19 +24,14 @@ from app.service import Service
 router = APIRouter(prefix="/api")
 
 
-def get_db() -> Generator[sqlite3.Connection, None, None]:
-    conn = get_connection()
-    try:
-        yield conn
-        conn.commit()
-    finally:
-        conn.close()
+def get_db() -> Generator[Session, None, None]:
+    yield from get_session()
 
 
 def get_repository(
-    conn: Annotated[sqlite3.Connection, Depends(get_db)],
+    session: Annotated[Session, Depends(get_db)],
 ) -> Repository:
-    return Repository(conn)
+    return Repository(session)
 
 
 def get_service(
@@ -43,32 +40,40 @@ def get_service(
     return Service(repository)
 
 
+ServiceDep = Annotated[Service, Depends(get_service)]
+
+
 @router.post("/tasks", response_model=TaskResponse)
-def create_task(
-    body: CreateTaskRequest,
-    service: Annotated[Service, Depends(get_service)],
-) -> TaskResponse:
+def create_task(body: CreateTaskRequest, service: ServiceDep) -> TaskResponse:
     try:
         task = service.create_task_from_raw(body.raw)
-    except ValueError as exc:
+    except ValidationError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return TaskResponse(**task)
 
 
 @router.get("/tasks", response_model=list[TaskResponse])
 def list_tasks(
-    service: Annotated[Service, Depends(get_service)],
+    service: ServiceDep,
     tag: str | None = Query(default=None),
 ) -> list[TaskResponse]:
-    tasks = service.list_tasks(tag)
-    return [TaskResponse(**task) for task in tasks]
+    return [TaskResponse(**task) for task in service.list_tasks(tag)]
+
+
+@router.patch("/tasks/order")
+def reorder_tasks(body: ReorderRequest, service: ServiceDep) -> dict[str, bool]:
+    try:
+        service.reorder_tasks(body.bucket, body.task_ids)
+    except ValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"ok": True}
 
 
 @router.patch("/tasks/{task_id}", response_model=TaskResponse)
 def update_task(
     task_id: int,
     body: UpdateTaskRequest,
-    service: Annotated[Service, Depends(get_service)],
+    service: ServiceDep,
 ) -> TaskResponse:
     try:
         task = service.update_task(
@@ -77,29 +82,26 @@ def update_task(
             estimate_blocks=body.estimate_blocks,
             blocks_done=body.blocks_done,
             status=body.status,
+            bucket=body.bucket,
+            note=body.note,
         )
-    except ValueError as exc:
-        detail = str(exc)
-        code = 404 if "not found" in detail else 400
-        raise HTTPException(status_code=code, detail=detail) from exc
+    except NotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return TaskResponse(**task)
 
 
 @router.post("/tasks/clear-completed")
-def clear_completed_tasks(
-    service: Annotated[Service, Depends(get_service)],
-) -> dict[str, int]:
+def clear_completed_tasks(service: ServiceDep) -> dict[str, int]:
     return {"deleted": service.clear_completed_tasks()}
 
 
 @router.delete("/tasks/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_task(
-    task_id: int,
-    service: Annotated[Service, Depends(get_service)],
-) -> None:
+def delete_task(task_id: int, service: ServiceDep) -> None:
     try:
         service.delete_task(task_id)
-    except ValueError as exc:
+    except NotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
@@ -107,14 +109,14 @@ def delete_task(
 def start_block(
     task_id: int,
     body: CreateBlockRequest,
-    service: Annotated[Service, Depends(get_service)],
+    service: ServiceDep,
 ) -> BlockStartResponse:
     try:
         block = service.start_block(task_id, body.duration_min)
-    except ValueError as exc:
-        detail = str(exc)
-        status = 404 if "not found" in detail else 400
-        raise HTTPException(status_code=status, detail=detail) from exc
+    except NotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return BlockStartResponse(**block)
 
 
@@ -122,24 +124,20 @@ def start_block(
 def end_block(
     block_id: int,
     body: EndBlockRequest,
-    service: Annotated[Service, Depends(get_service)],
+    service: ServiceDep,
 ) -> BlockResponse:
     try:
         block = service.end_block(block_id, body.completed)
-    except ValueError as exc:
+    except NotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return BlockResponse(**block)
 
 
 @router.get("/dashboard", response_model=DashboardResponse)
-def get_dashboard(
-    service: Annotated[Service, Depends(get_service)],
-) -> DashboardResponse:
+def get_dashboard(service: ServiceDep) -> DashboardResponse:
     return DashboardResponse(**service.get_dashboard())
 
 
 @router.get("/stats", response_model=StatsResponse)
-def get_stats(
-    service: Annotated[Service, Depends(get_service)],
-) -> StatsResponse:
+def get_stats(service: ServiceDep) -> StatsResponse:
     return StatsResponse(**service.get_stats())
