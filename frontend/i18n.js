@@ -303,3 +303,7 @@ function applyTranslations(root = document) {
 }
 
 document.documentElement.lang = lang;
+
+if (typeof module !== "undefined" && module.exports) {
+  module.exports = { t, plural, MESSAGES };
+}

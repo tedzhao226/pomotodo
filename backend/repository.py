@@ -3,7 +3,7 @@ from datetime import datetime
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models import Block, Task, TaskTag, utcnow
+from backend.models import Block, Task, TaskTag, utcnow
 
 
 def _iso(value: datetime | None) -> str | None:

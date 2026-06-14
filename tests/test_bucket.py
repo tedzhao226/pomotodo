@@ -2,10 +2,10 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from app.errors import ValidationError
-from app.models import Base
-from app.repository import Repository
-from app.service import Service
+from backend.errors import ValidationError
+from backend.models import Base
+from backend.repository import Repository
+from backend.service import Service
 
 
 @pytest.fixture

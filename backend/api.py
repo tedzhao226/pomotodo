@@ -4,10 +4,10 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
-from app.db import get_session
-from app.errors import NotFoundError, ValidationError
-from app.repository import Repository
-from app.schemas import (
+from backend.db import get_session
+from backend.errors import NotFoundError, ValidationError
+from backend.repository import Repository
+from backend.schemas import (
     BlockResponse,
     BlockStartResponse,
     CreateBlockRequest,
@@ -20,7 +20,7 @@ from app.schemas import (
     TaskResponse,
     UpdateTaskRequest,
 )
-from app.service import Service
+from backend.service import Service
 
 router = APIRouter(prefix="/api")
 

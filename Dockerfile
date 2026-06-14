@@ -10,7 +10,7 @@ COPY pyproject.toml uv.lock ./
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev --no-install-project
 
-COPY app ./app
+COPY backend ./backend
 COPY alembic ./alembic
 COPY alembic.ini ./
 RUN --mount=type=cache,target=/root/.cache/uv \
@@ -24,14 +24,14 @@ WORKDIR /app
 RUN groupadd -r app && useradd -r -g app app
 
 COPY --from=builder /app/.venv /app/.venv
-COPY app ./app
+COPY backend ./backend
 COPY alembic ./alembic
 COPY alembic.ini ./
-COPY static ./static
+COPY frontend ./frontend
 COPY docker/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh && chown -R app:app /app
 
 USER app
 EXPOSE 8000
 ENTRYPOINT ["/entrypoint.sh"]
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000"]

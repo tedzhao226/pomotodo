@@ -2,7 +2,7 @@
 # (naturally-completed) work block, never on a discarded one.
 #
 # Run against a live dev server:
-#   POMOTODO_DATABASE_URL="sqlite:///./pomotodo_dev.db" uv run uvicorn app.main:app --port 8731 &
+#   POMOTODO_DATABASE_URL="sqlite:///./pomotodo_dev.db" uv run uvicorn backend.main:app --port 8731 &
 #   browser-harness < tests/bh_timer_counts.py
 #
 # Exits non-zero (raises) on the first failed assertion.

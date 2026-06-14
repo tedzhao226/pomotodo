@@ -1,8 +1,8 @@
 from datetime import datetime, timedelta, timezone
 
-from app.errors import NotFoundError, ValidationError
-from app.parser import parse_raw
-from app.repository import Repository
+from backend.errors import NotFoundError, ValidationError
+from backend.parser import parse_raw
+from backend.repository import Repository
 
 VALID_DURATIONS = {30, 45, 60, 90}
 VALID_BUCKETS = {"today", "backlog"}

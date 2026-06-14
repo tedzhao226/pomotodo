@@ -4,15 +4,15 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from app.api import router
+from backend.api import router
 
-STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
+FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
 
 app = FastAPI()
 app.include_router(router)
-app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+app.mount("/frontend", StaticFiles(directory=FRONTEND_DIR), name="frontend")
 
 
 @app.get("/")
 def index() -> FileResponse:
-    return FileResponse(STATIC_DIR / "index.html")
+    return FileResponse(FRONTEND_DIR / "index.html")

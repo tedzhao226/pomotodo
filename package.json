@@ -1,0 +1,6 @@
+{
+  "name": "pomotodo-frontend-tests",
+  "private": true,
+  "scripts": { "test": "vitest run" },
+  "devDependencies": { "vitest": "^2", "jsdom": "^25" }
+}

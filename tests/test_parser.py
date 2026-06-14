@@ -1,6 +1,6 @@
 import pytest
 
-from app.parser import parse_raw
+from backend.parser import parse_raw
 
 
 def test_estimate_present():
