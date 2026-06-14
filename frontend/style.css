@@ -52,7 +52,7 @@ body {
 /* Decorative charts are graphics, not text: keep selection from painting a
    solid block over them when nearby content is selected. */
 svg,
-.mini-progress {
+.mini-card {
   -webkit-user-select: none;
   user-select: none;
 }
