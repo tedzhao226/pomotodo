@@ -53,7 +53,7 @@ class Repository:
         return self._task_to_dict(task)
 
     def list_tasks(self, tag: str | None = None) -> list[dict]:
-        stmt = select(Task)
+        stmt = select(Task).where(Task.archived.is_(False))
         if tag:
             stmt = stmt.join(Task.tags).where(TaskTag.tag == tag)
         stmt = stmt.order_by(Task.bucket, Task.sort_order, Task.id)
@@ -69,7 +69,9 @@ class Repository:
 
     def task_ids_in_bucket(self, bucket: str) -> set[int]:
         rows = self._session.execute(
-            select(Task.id).where(Task.bucket == bucket)
+            select(Task.id).where(
+                Task.bucket == bucket, Task.archived.is_(False)
+            )
         ).scalars()
         return set(rows)
 
@@ -109,23 +111,58 @@ class Repository:
         self._session.flush()
 
     def delete_task(self, task_id: int) -> bool:
+        # Soft delete: drop it from the todo lists but keep the row + its blocks
+        # so pomo/todo history survives.
         task = self._get(task_id)
         if task is None:
             return False
-        self._session.delete(task)
+        task.archived = True
         self._session.flush()
         return True
 
     def delete_completed_tasks(self) -> int:
         tasks = (
-            self._session.execute(select(Task).where(Task.status == "done"))
+            self._session.execute(
+                select(Task).where(
+                    Task.status == "done", Task.archived.is_(False)
+                )
+            )
             .scalars()
             .all()
         )
         for task in tasks:
-            self._session.delete(task)
+            task.archived = True
         self._session.flush()
         return len(tasks)
+
+    def get_all_tasks_with_stats(
+        self, limit: int | None = None, offset: int = 0
+    ) -> list[dict]:
+        stmt = select(Task).order_by(Task.created_at.desc(), Task.id.desc())
+        if limit is not None:
+            stmt = stmt.limit(limit).offset(offset)
+        tasks = self._session.execute(stmt).scalars().all()
+        stats = self.get_task_block_stats()
+        result = []
+        for task in tasks:
+            done = stats.get(task.id, {}).get("blocks_done", 0)
+            result.append(
+                {
+                    "id": task.id,
+                    "name": task.name,
+                    "tags": [tag.tag for tag in task.tags],
+                    "status": task.status,
+                    "archived": task.archived,
+                    "bucket": task.bucket,
+                    "blocks_done": (
+                        task.blocks_override
+                        if task.blocks_override is not None
+                        else done
+                    ),
+                    "created_at": _iso(task.created_at),
+                }
+            )
+        return result
 
     def create_block(self, task_id: int, duration_min: int) -> dict:
         block = Block(task_id=task_id, duration_min=duration_min)
@@ -216,31 +253,42 @@ class Repository:
             for row in rows
         ]
 
-    def get_completed_blocks(self, since: datetime) -> list[dict]:
+    def get_completed_blocks(self, since: datetime | None = None) -> list[dict]:
+        conditions = [Block.completed.is_(True), Block.ended_at.is_not(None)]
+        if since is not None:
+            conditions.append(Block.started_at >= since)
         blocks = (
             self._session.execute(
-                select(Block)
-                .where(
-                    Block.completed.is_(True),
-                    Block.ended_at.is_not(None),
-                    Block.started_at >= since,
-                )
-                .order_by(Block.started_at)
+                select(Block).where(*conditions).order_by(Block.started_at)
             )
             .scalars()
             .all()
         )
-        return [
-            {
-                "started_at": _iso(block.started_at),
-                "ended_at": _iso(block.ended_at),
-                "duration_min": block.duration_min,
-                "task_id": block.task_id,
-                "task_name": block.task.name,
-                "tags": [tag.tag for tag in block.task.tags],
-            }
-            for block in blocks
-        ]
+        return [self._block_to_dict(block) for block in blocks]
+
+    def _block_to_dict(self, block: Block) -> dict:
+        return {
+            "started_at": _iso(block.started_at),
+            "ended_at": _iso(block.ended_at),
+            "duration_min": block.duration_min,
+            "task_id": block.task_id,
+            "task_name": block.task.name,
+            "tags": [tag.tag for tag in block.task.tags],
+        }
+
+    def get_completed_blocks_page(self, limit: int, offset: int) -> list[dict]:
+        blocks = (
+            self._session.execute(
+                select(Block)
+                .where(Block.completed.is_(True), Block.ended_at.is_not(None))
+                .order_by(Block.started_at.desc(), Block.id.desc())
+                .limit(limit)
+                .offset(offset)
+            )
+            .scalars()
+            .all()
+        )
+        return [self._block_to_dict(block) for block in blocks]
 
     def count_completed_blocks(self) -> int:
         return self._session.execute(

@@ -4,7 +4,14 @@ const MESSAGES = {
   en: {
     "nav.main": "Main",
     "nav.stats": "Statistics",
+    "nav.history": "History",
     "nav.settings": "Settings",
+
+    "history.pomos": "Pomos",
+    "history.todos": "Todos",
+    "status.active": "Active",
+    "status.done": "Done",
+    "status.deleted": "Deleted",
 
     "timer.title": "Timer",
     "timer.ready": "Ready",
@@ -54,6 +61,8 @@ const MESSAGES = {
     "mini.allTimePomos": "All time pomos",
     "mini.todoHistory": "Todo History",
     "mini.allTimeTodos": "All time todos",
+    "mini.lifetime": "lifetime",
+    "mini.done": "{n} done",
 
     "stats.title": "Statistics",
     "stats.range": "Range",
@@ -106,9 +115,9 @@ const MESSAGES = {
 
     "running.banner": "Running: {name} ({min} min block started {time})",
     "confirm.clearCompleted":
-      "Delete all completed todos? This removes their pomo history too.",
+      "Clear completed todos from your list? (History is kept.)",
     "confirm.deleteTask":
-      'Delete "{name}"? This removes its pomo history too.',
+      'Remove "{name}" from your todos? (History is kept.)',
     "err.endBlock": "Couldn't end block: {msg}",
     "err.move": "Couldn't move task: {msg}",
     "err.saveOrder": "Couldn't save order: {msg}",
@@ -122,7 +131,14 @@ const MESSAGES = {
   zh: {
     "nav.main": "主页",
     "nav.stats": "统计",
+    "nav.history": "历史",
     "nav.settings": "设置",
+
+    "history.pomos": "番茄",
+    "history.todos": "待办",
+    "status.active": "进行中",
+    "status.done": "已完成",
+    "status.deleted": "已删除",
 
     "timer.title": "计时器",
     "timer.ready": "就绪",
@@ -172,6 +188,8 @@ const MESSAGES = {
     "mini.allTimePomos": "累计番茄",
     "mini.todoHistory": "待办历史",
     "mini.allTimeTodos": "累计待办",
+    "mini.lifetime": "累计",
+    "mini.done": "{n} 已完成",
 
     "stats.title": "统计",
     "stats.range": "范围",
@@ -223,8 +241,8 @@ const MESSAGES = {
     "row.showNote": "显示笔记",
 
     "running.banner": "进行中：{name}（{min} 分钟，开始于 {time}）",
-    "confirm.clearCompleted": "删除所有已完成待办？这也会删除它们的番茄历史。",
-    "confirm.deleteTask": "删除「{name}」？这也会删除它的番茄历史。",
+    "confirm.clearCompleted": "从列表清除已完成待办？（历史保留。）",
+    "confirm.deleteTask": "从待办中移除「{name}」？（历史保留。）",
     "err.endBlock": "无法结束番茄：{msg}",
     "err.move": "无法移动任务：{msg}",
     "err.saveOrder": "无法保存排序：{msg}",

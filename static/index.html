@@ -19,6 +19,7 @@
     <nav class="nav" id="nav">
       <button type="button" class="nav-btn active" data-view="main" data-i18n="nav.main">Main</button>
       <button type="button" class="nav-btn" data-view="stats" data-i18n="nav.stats">Statistics</button>
+      <button type="button" class="nav-btn" data-view="history" data-i18n="nav.history">History</button>
       <button type="button" class="nav-btn" data-view="settings" data-i18n="nav.settings">Settings</button>
     </nav>
   </header>
@@ -85,29 +86,41 @@
       </div>
 
       <div class="mini-cards" id="mini-cards">
-        <button type="button" class="mini-card" data-view="stats" id="card-statistics">
-          <span class="mini-label" data-i18n="mini.statistics">Statistics</span>
+        <button type="button" class="mini-card" data-view="stats" id="card-statistics" style="--accent: var(--tomato)">
+          <div class="mini-head"><span class="mini-dot"></span><span class="mini-label" data-i18n="mini.statistics">Statistics</span></div>
           <span class="mini-sub" data-i18n="mini.thisWeek">This week</span>
           <div class="mini-chart" id="mini-week"></div>
-          <span class="mini-value" id="mini-week-value">0</span>
+          <div class="mini-foot">
+            <span class="mini-value" id="mini-week-value">0</span>
+            <span class="mini-chip" id="mini-week-delta" hidden></span>
+          </div>
         </button>
-        <div class="mini-card">
-          <span class="mini-label" data-i18n="mini.goal">Goal</span>
+        <div class="mini-card" style="--accent: var(--green-deep)">
+          <div class="mini-head"><span class="mini-dot"></span><span class="mini-label" data-i18n="mini.goal">Goal</span></div>
           <span class="mini-sub" data-i18n="mini.dailyGoal">Daily goal</span>
-          <div class="mini-chart" id="mini-goal"></div>
-          <span class="mini-value" id="mini-goal-value">0 / 0</span>
+          <div class="mini-chart is-ring" id="mini-goal"></div>
+          <div class="mini-foot">
+            <span class="mini-value" id="mini-goal-value">0 / 0</span>
+          </div>
         </div>
-        <button type="button" class="mini-card" data-view="stats" id="card-pomo-history">
-          <span class="mini-label" data-i18n="mini.pomoHistory">Pomo History</span>
+        <button type="button" class="mini-card" data-view="history" id="card-pomo-history" style="--accent: var(--tomato)">
+          <div class="mini-head"><span class="mini-dot"></span><span class="mini-label" data-i18n="mini.pomoHistory">Pomo History</span></div>
           <span class="mini-sub" data-i18n="mini.allTimePomos">All time pomos</span>
           <div class="mini-chart" id="mini-pomo"></div>
-          <span class="mini-value" id="mini-pomo-value">0</span>
+          <div class="mini-foot">
+            <span class="mini-value" id="mini-pomo-value">0</span>
+            <span class="mini-chip neutral" data-i18n="mini.lifetime">lifetime</span>
+          </div>
         </button>
-        <div class="mini-card">
-          <span class="mini-label" data-i18n="mini.todoHistory">Todo History</span>
+        <button type="button" class="mini-card" data-view="history" id="card-todo-history" style="--accent: var(--blue)">
+          <div class="mini-head"><span class="mini-dot"></span><span class="mini-label" data-i18n="mini.todoHistory">Todo History</span></div>
           <span class="mini-sub" data-i18n="mini.allTimeTodos">All time todos</span>
-          <span class="mini-value mini-value-big" id="mini-todo-value">0</span>
-        </div>
+          <div class="mini-chart is-progress" id="mini-todo"></div>
+          <div class="mini-foot">
+            <span class="mini-value" id="mini-todo-value">0</span>
+            <span class="mini-chip neutral" id="mini-todo-done" hidden></span>
+          </div>
+        </button>
       </div>
     </section>
 
@@ -162,6 +175,34 @@
           </div>
         </section>
       </div>
+    </section>
+
+    <!-- HISTORY VIEW -->
+    <section class="view" id="view-history">
+      <section class="panel">
+        <div class="panel-head">
+          <h2 data-i18n="history.pomos">Pomos</h2>
+          <span id="history-pomo-total" class="today-count"></span>
+        </div>
+        <div id="history-pomos" class="history-pomos"></div>
+        <div class="history-pager" id="history-pomos-pager" hidden>
+          <button type="button" id="history-pomos-prev" class="pager-btn">‹</button>
+          <span id="history-pomos-info" class="pager-info"></span>
+          <button type="button" id="history-pomos-next" class="pager-btn">›</button>
+        </div>
+      </section>
+      <section class="panel">
+        <div class="panel-head">
+          <h2 data-i18n="history.todos">Todos</h2>
+          <span id="history-todo-total" class="today-count"></span>
+        </div>
+        <ul id="history-todos" class="history-todos"></ul>
+        <div class="history-pager" id="history-todos-pager" hidden>
+          <button type="button" id="history-todos-prev" class="pager-btn">‹</button>
+          <span id="history-todos-info" class="pager-info"></span>
+          <button type="button" id="history-todos-next" class="pager-btn">›</button>
+        </div>
+      </section>
     </section>
 
     <!-- SETTINGS VIEW -->

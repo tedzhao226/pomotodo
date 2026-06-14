@@ -123,6 +123,45 @@ def test_edit_name_without_markers_keeps_tags(service):
     assert updated["estimate_blocks"] == 3  # untouched
 
 
+def test_delete_archives_and_keeps_history(service):
+    task = service.create_task_from_raw("focus")
+    block = service.start_block(task["id"], 30)
+    service.end_block(block["id"], True)
+    assert service.get_stats()["all_time_pomos"] == 1
+
+    service.delete_task(task["id"])
+    # gone from the todo list
+    assert all(t["id"] != task["id"] for t in service.get_dashboard()["tasks"])
+    # history intact
+    assert service.get_stats()["all_time_pomos"] == 1
+    history = service.get_history()
+    assert len(history["pomos"]) == 1
+    todo = next(t for t in history["todos"] if t["id"] == task["id"])
+    assert todo["archived"] is True
+    assert todo["blocks_done"] == 1
+
+
+def test_clear_completed_archives_keeps_history(service):
+    task = service.create_task_from_raw("focus")
+    service.update_task(task["id"], status="done")
+    block = service.start_block(task["id"], 30)
+    service.end_block(block["id"], True)
+
+    service.clear_completed_tasks()
+    assert all(t["id"] != task["id"] for t in service.get_dashboard()["tasks"])
+    assert service.get_stats()["all_time_pomos"] == 1
+    history = service.get_history()
+    assert any(t["id"] == task["id"] and t["archived"] for t in history["todos"])
+
+
+def test_reorder_ignores_archived(service):
+    a = service.create_task_from_raw("a")
+    b = service.create_task_from_raw("b")
+    service.delete_task(b["id"])
+    with pytest.raises(ValidationError, match="not in today"):
+        service.reorder_tasks("today", [a["id"], b["id"]])
+
+
 def test_note_round_trip(service):
     task = service.create_task_from_raw("x")
     assert task["note"] == ""

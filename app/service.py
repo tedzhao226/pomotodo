@@ -158,3 +158,22 @@ class Service:
             "done_todos": self._repo.count_tasks("done"),
             "tags": self._repo.get_tag_summaries(),
         }
+
+    def get_history(
+        self,
+        *,
+        pomos_offset: int = 0,
+        pomos_limit: int = 20,
+        todos_offset: int = 0,
+        todos_limit: int = 20,
+    ) -> dict:
+        return {
+            "pomos": self._repo.get_completed_blocks_page(
+                pomos_limit, pomos_offset
+            ),
+            "pomos_total": self._repo.count_completed_blocks(),
+            "todos": self._repo.get_all_tasks_with_stats(
+                limit=todos_limit, offset=todos_offset
+            ),
+            "todos_total": self._repo.count_tasks(),
+        }

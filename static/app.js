@@ -44,6 +44,14 @@ const state = {
   editingTaskId: null,
   expandedNoteId: null,
   stats: null,
+  history: {
+    pomos: [],
+    todos: [],
+    pomosTotal: 0,
+    todosTotal: 0,
+    pomoPage: 0,
+    todoPage: 0,
+  },
   view: "main",
   settings: loadSettings(),
   dragId: null,
@@ -76,17 +84,33 @@ const els = {
   views: {
     main: document.getElementById("view-main"),
     stats: document.getElementById("view-stats"),
+    history: document.getElementById("view-history"),
     settings: document.getElementById("view-settings"),
   },
+  historyPomos: document.getElementById("history-pomos"),
+  historyTodos: document.getElementById("history-todos"),
+  historyPomoTotal: document.getElementById("history-pomo-total"),
+  historyTodoTotal: document.getElementById("history-todo-total"),
+  historyPomosPager: document.getElementById("history-pomos-pager"),
+  historyPomosPrev: document.getElementById("history-pomos-prev"),
+  historyPomosNext: document.getElementById("history-pomos-next"),
+  historyPomosInfo: document.getElementById("history-pomos-info"),
+  historyTodosPager: document.getElementById("history-todos-pager"),
+  historyTodosPrev: document.getElementById("history-todos-prev"),
+  historyTodosNext: document.getElementById("history-todos-next"),
+  historyTodosInfo: document.getElementById("history-todos-info"),
   todayCount: document.getElementById("today-count"),
   todayLog: document.getElementById("today-log"),
   miniWeek: document.getElementById("mini-week"),
   miniWeekValue: document.getElementById("mini-week-value"),
+  miniWeekDelta: document.getElementById("mini-week-delta"),
   miniGoal: document.getElementById("mini-goal"),
   miniGoalValue: document.getElementById("mini-goal-value"),
   miniPomo: document.getElementById("mini-pomo"),
   miniPomoValue: document.getElementById("mini-pomo-value"),
+  miniTodo: document.getElementById("mini-todo"),
   miniTodoValue: document.getElementById("mini-todo-value"),
+  miniTodoDone: document.getElementById("mini-todo-done"),
   rangeSelect: document.getElementById("range-select"),
   kpiTotal: document.getElementById("kpi-total"),
   kpiAvg: document.getElementById("kpi-avg"),
@@ -249,6 +273,9 @@ function showView(name) {
   if (name === "stats") {
     renderStats();
   }
+  if (name === "history") {
+    openHistory();
+  }
 }
 
 /* ---------- timer ---------- */
@@ -407,7 +434,7 @@ function updateTimerControls() {
 }
 
 function renderActiveBanner(selected) {
-  if (!selected) {
+  if (!selected || selected.status !== "active") {
     els.activeBanner.hidden = true;
     return;
   }
@@ -813,6 +840,20 @@ function svgPie(slices, { size = 140, donut = 0 } = {}) {
   return `<svg viewBox="0 0 ${size} ${size}" class="pie-svg">${paths}${hole}</svg>`;
 }
 
+function svgRing(frac, label) {
+  const r = 20;
+  const c = 2 * Math.PI * r;
+  const offset = (c * (1 - Math.max(0, Math.min(1, frac)))).toFixed(1);
+  return `<svg viewBox="0 0 52 52" class="ring-svg">
+    <circle cx="26" cy="26" r="${r}" fill="none" stroke="#eef0ec" stroke-width="7"/>
+    <circle cx="26" cy="26" r="${r}" fill="none" stroke="var(--green-deep)" stroke-width="7"
+            stroke-linecap="round" stroke-dasharray="${c.toFixed(1)}"
+            stroke-dashoffset="${offset}" transform="rotate(-90 26 26)"/>
+    <text x="26" y="30" text-anchor="middle" font-family="var(--font)" font-weight="700"
+          font-size="13" fill="var(--ink-strong)">${label}</text>
+  </svg>`;
+}
+
 function legendHtml(slices) {
   const items = slices
     .filter((s) => s.value > 0)
@@ -886,19 +927,30 @@ function renderMiniCards() {
   }
   const week = perDaySeries(state.stats.blocks, 7);
   els.miniWeek.innerHTML = svgBars(week.map((d) => d.count));
-  els.miniWeekValue.textContent = week.reduce((s, d) => s + d.count, 0);
+  const weekTotal = week.reduce((s, d) => s + d.count, 0);
+  els.miniWeekValue.textContent = weekTotal;
+
+  const fortnight = perDaySeries(state.stats.blocks, 14).map((d) => d.count);
+  const priorWeek = fortnight.slice(0, 7).reduce((s, n) => s + n, 0);
+  const recentWeek = fortnight.slice(7).reduce((s, n) => s + n, 0);
+  if (priorWeek === 0 && recentWeek === 0) {
+    els.miniWeekDelta.hidden = true;
+  } else {
+    const pct =
+      priorWeek === 0 ? 100 : Math.round(((recentWeek - priorWeek) / priorWeek) * 100);
+    els.miniWeekDelta.hidden = false;
+    els.miniWeekDelta.classList.toggle("down", pct < 0);
+    els.miniWeekDelta.textContent = `${pct < 0 ? "▼" : "▲"} ${Math.abs(pct)}%`;
+  }
 
   const todayKey = localDayKey(new Date());
   const todayDone = state.stats.blocks.filter(
     (b) => localDayKey(new Date(b.started_at)) === todayKey,
   ).length;
   const goal = state.settings.dailyGoal;
-  els.miniGoal.innerHTML = svgPie(
-    [
-      { label: "Done", value: Math.min(todayDone, goal), color: "#8ed1a0" },
-      { label: "Left", value: Math.max(goal - todayDone, 0), color: "#e9efe9" },
-    ],
-    { size: 80, donut: 0.62 },
+  els.miniGoal.innerHTML = svgRing(
+    goal > 0 ? todayDone / goal : 0,
+    `${goal > 0 ? Math.round((Math.min(todayDone, goal) / goal) * 100) : 0}%`,
   );
   els.miniGoalValue.textContent = `${todayDone} / ${goal}`;
 
@@ -910,7 +962,13 @@ function renderMiniCards() {
   });
   els.miniPomoValue.textContent = state.stats.all_time_pomos;
 
-  els.miniTodoValue.textContent = state.stats.all_time_todos;
+  const totalTodos = state.stats.all_time_todos;
+  const doneTodos = state.stats.done_todos;
+  const todoFrac = totalTodos > 0 ? Math.round((doneTodos / totalTodos) * 100) : 0;
+  els.miniTodo.innerHTML = `<div class="mini-progress"><span style="width:${todoFrac}%"></span></div>`;
+  els.miniTodoValue.textContent = totalTodos;
+  els.miniTodoDone.hidden = totalTodos === 0;
+  els.miniTodoDone.textContent = t("mini.done", { n: doneTodos });
 }
 
 function renderStats() {
@@ -958,6 +1016,171 @@ function renderStats() {
   }
   els.worktimeChart.innerHTML = svgPie(buckets);
   els.worktimeLegend.innerHTML = legendHtml(buckets);
+}
+
+/* ---------- history page ---------- */
+
+function dayHeading(key) {
+  const d = new Date(`${key}T00:00:00`);
+  return d.toLocaleDateString([], {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  });
+}
+
+const HISTORY_POMO_PAGE = 20;
+const HISTORY_TODO_PAGE = 20;
+
+function fetchHistory(pOff, pLim, tOff, tLim) {
+  return api(
+    `/api/history?pomos_offset=${pOff}&pomos_limit=${pLim}&todos_offset=${tOff}&todos_limit=${tLim}`,
+  );
+}
+
+// Open the History tab: reset to page 0 and load both sections.
+async function openHistory() {
+  state.history = {
+    pomos: [],
+    todos: [],
+    pomosTotal: 0,
+    todosTotal: 0,
+    pomoPage: 0,
+    todoPage: 0,
+  };
+  try {
+    const data = await fetchHistory(0, HISTORY_POMO_PAGE, 0, HISTORY_TODO_PAGE);
+    state.history.pomos = data.pomos;
+    state.history.pomosTotal = data.pomos_total;
+    state.history.todos = data.todos;
+    state.history.todosTotal = data.todos_total;
+  } catch {
+    return;
+  }
+  renderHistory();
+}
+
+async function gotoPomoPage(page) {
+  try {
+    const data = await fetchHistory(
+      page * HISTORY_POMO_PAGE,
+      HISTORY_POMO_PAGE,
+      0,
+      1,
+    );
+    state.history.pomos = data.pomos;
+    state.history.pomosTotal = data.pomos_total;
+    state.history.pomoPage = page;
+  } catch {
+    return;
+  }
+  renderHistory();
+}
+
+async function gotoTodoPage(page) {
+  try {
+    const data = await fetchHistory(
+      0,
+      1,
+      page * HISTORY_TODO_PAGE,
+      HISTORY_TODO_PAGE,
+    );
+    state.history.todos = data.todos;
+    state.history.todosTotal = data.todos_total;
+    state.history.todoPage = page;
+  } catch {
+    return;
+  }
+  renderHistory();
+}
+
+function renderPager(info, prev, next, page, total, pageSize) {
+  const pages = Math.max(1, Math.ceil(total / pageSize));
+  info.textContent = `${page + 1} / ${pages}`;
+  prev.disabled = page <= 0;
+  next.disabled = page >= pages - 1;
+  return pages;
+}
+
+// Pure render from the in-memory accumulators (no network).
+function renderHistory() {
+  const { pomos, todos, pomosTotal, todosTotal, pomoPage, todoPage } =
+    state.history;
+
+  els.historyPomoTotal.textContent = t("today.finished", {
+    n: pomosTotal,
+    unit: plural("pomo", pomosTotal),
+  });
+  const byDay = new Map();
+  for (const b of pomos) {
+    const key = localDayKey(new Date(b.started_at));
+    if (!byDay.has(key)) {
+      byDay.set(key, []);
+    }
+    byDay.get(key).push(b);
+  }
+  els.historyPomos.innerHTML = byDay.size
+    ? [...byDay.keys()]
+        .map((key) => {
+          const rows = byDay
+            .get(key)
+            .map((b) => {
+              const tags = b.tags
+                .map((x) => `<span class="log-tag">#${escapeHtml(x)}</span>`)
+                .join(" ");
+              return `<li class="log-item">
+                <span class="log-time">${hourMinute(b.ended_at || b.started_at)}<b>${hourMinute(b.started_at)}</b></span>
+                <span class="log-name">${tags} ${escapeHtml(b.task_name)} <span class="log-count">${b.duration_min}m</span></span>
+              </li>`;
+            })
+            .join("");
+          return `<div class="history-day">
+            <div class="history-day-head">${escapeHtml(dayHeading(key))} <span>${byDay.get(key).length}</span></div>
+            <ul class="today-log">${rows}</ul>
+          </div>`;
+        })
+        .join("")
+    : `<p class="log-empty">${t("stats.noData")}</p>`;
+  const pomoPages = renderPager(
+    els.historyPomosInfo,
+    els.historyPomosPrev,
+    els.historyPomosNext,
+    pomoPage,
+    pomosTotal,
+    HISTORY_POMO_PAGE,
+  );
+  els.historyPomosPager.hidden = pomoPages <= 1;
+
+  els.historyTodoTotal.textContent = `${todosTotal}`;
+  els.historyTodos.innerHTML = todos.length
+    ? todos
+        .map((todo) => {
+          const status = todo.archived
+            ? "deleted"
+            : todo.status === "done"
+              ? "done"
+              : "active";
+          const tags = todo.tags
+            .map((x) => `<span class="log-tag">#${escapeHtml(x)}</span>`)
+            .join(" ");
+          return `<li class="history-todo">
+            <span class="status-chip status-chip-${status}">${t(`status.${status}`)}</span>
+            <span class="history-todo-name${todo.archived ? " is-deleted" : ""}">${tags} ${escapeHtml(todo.name)}</span>
+            <span class="history-todo-blocks">${todo.blocks_done} ${plural("block", todo.blocks_done)}</span>
+            <span class="history-todo-date">${escapeHtml(dayHeading(localDayKey(new Date(todo.created_at))))}</span>
+          </li>`;
+        })
+        .join("")
+    : `<li class="log-empty">${t("stats.noData")}</li>`;
+  const todoPages = renderPager(
+    els.historyTodosInfo,
+    els.historyTodosPrev,
+    els.historyTodosNext,
+    todoPage,
+    todosTotal,
+    HISTORY_TODO_PAGE,
+  );
+  els.historyTodosPager.hidden = todoPages <= 1;
 }
 
 /* ---------- block lifecycle ---------- */
@@ -1168,6 +1391,18 @@ els.restBtn.addEventListener("click", () => {
 });
 
 els.rangeSelect.addEventListener("change", renderStats);
+els.historyPomosPrev.addEventListener("click", () =>
+  gotoPomoPage(state.history.pomoPage - 1),
+);
+els.historyPomosNext.addEventListener("click", () =>
+  gotoPomoPage(state.history.pomoPage + 1),
+);
+els.historyTodosPrev.addEventListener("click", () =>
+  gotoTodoPage(state.history.todoPage - 1),
+);
+els.historyTodosNext.addEventListener("click", () =>
+  gotoTodoPage(state.history.todoPage + 1),
+);
 
 els.clearCompletedBtn.addEventListener("click", async () => {
   if (!window.confirm(t("confirm.clearCompleted"))) {

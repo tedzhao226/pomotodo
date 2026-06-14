@@ -107,3 +107,21 @@ class StatsResponse(BaseModel):
     all_time_todos: int
     done_todos: int
     tags: list[TagSummary] = Field(default_factory=list)
+
+
+class HistoryTodo(BaseModel):
+    id: int
+    name: str
+    tags: list[str]
+    status: str
+    archived: bool
+    bucket: str
+    blocks_done: int
+    created_at: str
+
+
+class HistoryResponse(BaseModel):
+    pomos: list[StatsBlock]
+    pomos_total: int
+    todos: list[HistoryTodo]
+    todos_total: int

@@ -28,6 +28,7 @@ class Task(Base):
     bucket: Mapped[str] = mapped_column(String(16), default="today")
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
     note: Mapped[str] = mapped_column(Text, default="")
+    archived: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow
     )

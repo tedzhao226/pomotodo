@@ -14,6 +14,7 @@ from app.schemas import (
     CreateTaskRequest,
     DashboardResponse,
     EndBlockRequest,
+    HistoryResponse,
     ReorderRequest,
     StatsResponse,
     TaskResponse,
@@ -141,3 +142,21 @@ def get_dashboard(service: ServiceDep) -> DashboardResponse:
 @router.get("/stats", response_model=StatsResponse)
 def get_stats(service: ServiceDep) -> StatsResponse:
     return StatsResponse(**service.get_stats())
+
+
+@router.get("/history", response_model=HistoryResponse)
+def get_history(
+    service: ServiceDep,
+    pomos_offset: int = Query(default=0, ge=0),
+    pomos_limit: int = Query(default=20, ge=1, le=200),
+    todos_offset: int = Query(default=0, ge=0),
+    todos_limit: int = Query(default=20, ge=1, le=200),
+) -> HistoryResponse:
+    return HistoryResponse(
+        **service.get_history(
+            pomos_offset=pomos_offset,
+            pomos_limit=pomos_limit,
+            todos_offset=todos_offset,
+            todos_limit=todos_limit,
+        )
+    )
