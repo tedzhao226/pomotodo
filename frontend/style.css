@@ -39,6 +39,24 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* Text selection: soft mint highlight instead of the OS default. */
+::selection {
+  background: #cfe8d6; /* soft mint, derived from --green-deep */
+  color: #1f2a22;
+}
+::-moz-selection {
+  background: #cfe8d6; /* soft mint, derived from --green-deep */
+  color: #1f2a22;
+}
+
+/* Decorative charts are graphics, not text: keep selection from painting a
+   solid block over them when nearby content is selected. */
+svg,
+.mini-progress {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
 /* ---------- app shell ---------- */
 .app {
   max-width: 1040px;
