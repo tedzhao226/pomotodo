@@ -4,7 +4,6 @@ from backend.errors import NotFoundError, ValidationError
 from backend.parser import parse_raw
 from backend.repository import Repository
 
-VALID_DURATIONS = {30, 45, 60, 90}
 VALID_BUCKETS = {"today", "backlog"}
 STATS_WINDOW_DAYS = 90
 
@@ -95,10 +94,8 @@ class Service:
         return self._repo.delete_completed_tasks()
 
     def start_block(self, task_id: int, duration_min: int) -> dict:
-        if duration_min not in VALID_DURATIONS:
-            raise ValidationError(
-                f"duration_min must be one of {sorted(VALID_DURATIONS)}"
-            )
+        if duration_min <= 0:
+            raise ValidationError("duration_min must be positive")
         if self._repo.get_task(task_id) is None:
             raise NotFoundError(f"Task {task_id} not found")
         return self._repo.create_block(task_id, duration_min)
