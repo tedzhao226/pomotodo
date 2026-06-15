@@ -31,6 +31,8 @@ function saveSettings(settings) {
 
 const state = {
   activeBlock: null,
+  activeTaskId: null,
+  touchedTaskIds: new Set(),
   timerInterval: null,
   remainingSeconds: 0,
   deadline: null,
@@ -65,10 +67,16 @@ const els = {
   addTaskForm: document.getElementById("add-task-form"),
   addTaskError: document.getElementById("add-task-error"),
   currentTask: document.getElementById("current-task"),
+  touchedChips: document.getElementById("touched-chips"),
+  creditModal: document.getElementById("credit-modal"),
+  creditList: document.getElementById("credit-list"),
+  creditTitle: document.getElementById("credit-title"),
+  creditConfirm: document.getElementById("credit-confirm"),
   timerDisplay: document.getElementById("timer-display"),
   timerMode: document.getElementById("timer-mode"),
   timerBtn: document.getElementById("timer-btn"),
   skipBtn: document.getElementById("skip-btn"),
+  restartBtn: document.getElementById("restart-btn"),
   timerPanel: document.getElementById("timer-panel"),
   timerTabs: document.querySelectorAll(".timer-tab"),
   streakDots: document.getElementById("streak-dots"),
@@ -258,7 +266,12 @@ function timerDurationSeconds() {
 }
 
 function timerIsPaused() {
-  return !state.running && state.remainingSeconds < timerDurationSeconds();
+  // A paused timer has time left; remaining 0 is fresh/idle, not paused.
+  return (
+    !state.running &&
+    state.remainingSeconds > 0 &&
+    state.remainingSeconds < timerDurationSeconds()
+  );
 }
 
 function timerIsActive() {
@@ -291,17 +304,14 @@ function renderTimer() {
   }
 
   els.timerDisplay.textContent = formatTime(state.remainingSeconds);
-  if (state.running) {
-    btn.textContent = t("timer.pauseCap");
-    btn.classList.remove("primary");
-    btn.disabled = false;
-  } else {
-    btn.textContent = t("timer.startCap");
-    btn.classList.add("primary");
-    btn.disabled = disabled;
-  }
-  els.skipBtn.hidden = !timerIsActive();
-  els.skipBtn.textContent = t("timer.skip");
+  btn.textContent = state.running ? "⏸" : "▶";
+  btn.title = state.running ? t("timer.pauseCap") : t("timer.startCap");
+  btn.disabled = state.running ? false : disabled;
+
+  els.skipBtn.disabled = !timerIsActive();
+  els.skipBtn.title = t("timer.skip");
+  els.restartBtn.disabled = !state.activeBlock;
+  els.restartBtn.title = t("timer.restart");
 }
 
 // Progress toward the next long rest: longEvery dots, filled per the current streak.
@@ -399,21 +409,46 @@ async function stopTimer() {
 function updateTimerControls() {
   const tasks = state.dashboard ? state.dashboard.tasks : [];
   // Drop a stale selection only if the task no longer exists; status/filter don't matter.
+  // No task is auto-selected: the user picks one (and can deselect it).
   if (
     state.selectedTaskId !== null &&
     !tasks.some((task) => task.id === state.selectedTaskId)
   ) {
     state.selectedTaskId = null;
   }
-  if (state.selectedTaskId === null) {
-    const firstActive = tasks.find((task) => task.status === "active");
-    if (firstActive) {
-      state.selectedTaskId = firstActive.id;
-    }
-  }
-  const selected = tasks.find((task) => task.id === state.selectedTaskId);
-  els.currentTask.textContent = selected ? selected.name : t("timer.noTask");
+  // While a block runs the label follows the active task; otherwise the pick.
+  const labelTaskId = state.activeBlock ? state.activeTaskId : state.selectedTaskId;
+  const current = tasks.find((task) => task.id === labelTaskId);
+  els.currentTask.textContent = current ? current.name : t("timer.noTask");
+  renderTouchedChips(tasks);
   renderTimer();
+}
+
+// Chips for every task touched in the running block — a live preview of the
+// completion credit checklist. Hidden when no block is running.
+function renderTouchedChips(tasks) {
+  if (!els.touchedChips) {
+    return;
+  }
+  if (!state.activeBlock || state.touchedTaskIds.size === 0) {
+    els.touchedChips.hidden = true;
+    els.touchedChips.innerHTML = "";
+    return;
+  }
+  els.touchedChips.hidden = false;
+  els.touchedChips.innerHTML = [...state.touchedTaskIds]
+    .map((id) => {
+      const task = tasks.find((tk) => tk.id === id);
+      const name = task ? task.name : `#${id}`;
+      const isActive = id === state.activeTaskId;
+      // Non-active touched tasks can be dropped from this block's credit;
+      // the active task is running and stays.
+      const remove = isActive
+        ? ""
+        : `<button type="button" class="chip-x" data-chip-remove="${id}" title="${t("timer.removeTouched")}">✕</button>`;
+      return `<span class="touched-chip${isActive ? " active" : ""}">${escapeHtml(name)}${remove}</span>`;
+    })
+    .join("");
 }
 
 /* ---------- tasks ---------- */
@@ -512,13 +547,20 @@ function taskItem(task, draggable) {
   if (draggable && state.editingTaskId !== task.id) {
     li.draggable = true;
   }
-  if (data.running_block && data.running_block.task_id === task.id) {
+  if (state.activeBlock) {
+    // During a block, highlight the active task and mark the touched ones.
+    if (task.id === state.activeTaskId) {
+      li.classList.add("running");
+    } else if (state.touchedTaskIds.has(task.id)) {
+      li.classList.add("touched");
+    }
+  } else if (data.running_block && data.running_block.task_id === task.id) {
     li.classList.add("running");
   }
   if (task.status === "done") {
     li.classList.add("is-done");
   }
-  if (task.id === state.selectedTaskId) {
+  if (!state.activeBlock && task.id === state.selectedTaskId) {
     li.classList.add("active");
   }
   li.innerHTML =
@@ -608,10 +650,16 @@ function renderDashboard() {
 
   if (data.running_block) {
     const rb = data.running_block;
+    // During a live block the focus may have switched client-side; show the
+    // active task's name rather than the (initial) server block's task.
+    const activeTask =
+      state.activeBlock &&
+      data.tasks.find((task) => task.id === state.activeTaskId);
+    const name = activeTask ? activeTask.name : rb.task_name;
     els.runningBanner.hidden = false;
     els.runningBanner.innerHTML =
       `<span class="running-dot"></span>` +
-      `<span class="running-name">${escapeHtml(rb.task_name)}</span>` +
+      `<span class="running-name">${escapeHtml(name)}</span>` +
       `<span class="running-meta">${t("running.meta", {
         min: rb.duration_min,
         t: hourMinute(rb.started_at),
@@ -668,6 +716,9 @@ function maybeRehydrateTimer() {
     duration_min: rb.duration_min,
     durationMin: rb.duration_min,
   };
+  // Switches made before reload aren't persisted; resume with the anchor task.
+  state.activeTaskId = rb.task_id;
+  state.touchedTaskIds = new Set([rb.task_id]);
   state.timerMode = "pomodoro";
   state.pendingTaskId = rb.task_id;
   state.pendingDuration = rb.duration_min;
@@ -1164,6 +1215,8 @@ async function startBlock(taskId, durationMin) {
     ...block,
     durationMin,
   };
+  state.activeTaskId = taskId;
+  state.touchedTaskIds = new Set([taskId]);
   state.timerMode = "pomodoro";
   state.pendingTaskId = taskId;
   state.pendingDuration = durationMin;
@@ -1188,6 +1241,8 @@ async function finishBlock(completed) {
     return false;
   }
   state.activeBlock = null;
+  state.activeTaskId = null;
+  state.touchedTaskIds = new Set();
   if (!completed) {
     state.streakBlocks = 0;
     renderStreak();
@@ -1200,6 +1255,73 @@ async function finishBlock(completed) {
   renderStreak();
   await syncNow();
   return true;
+}
+
+// On a natural completion the user picks which touched tasks to credit;
+// each checked task earns one completed block (server-side).
+async function completeBlockWithCredit() {
+  const block = state.activeBlock;
+  if (!block) {
+    return;
+  }
+  const lastActive = state.activeTaskId || block.task_id;
+  const checked = await openCreditModal([...state.touchedTaskIds]);
+  try {
+    await api(`/api/blocks/${block.id}/credit`, {
+      method: "POST",
+      body: JSON.stringify({ task_ids: checked }),
+    });
+  } catch (error) {
+    els.timerMode.textContent = t("err.endBlock", { msg: error.message });
+    return;
+  }
+  state.activeBlock = null;
+  state.activeTaskId = null;
+  state.touchedTaskIds = new Set();
+  state.streakBlocks += 1;
+  state.pendingTaskId = lastActive;
+  state.pendingDuration = block.durationMin;
+  renderStreak();
+  await syncNow();
+  const next =
+    state.streakBlocks % state.settings.longEvery === 0
+      ? "longBreak"
+      : "shortBreak";
+  await switchMode(next, { auto: true });
+}
+
+function openCreditModal(taskIds) {
+  return new Promise((resolve) => {
+    const tasks = state.dashboard ? state.dashboard.tasks : [];
+    els.creditTitle.textContent = t("credit.title");
+    els.creditConfirm.textContent = t("credit.confirm");
+    els.creditList.innerHTML = "";
+    taskIds.forEach((id) => {
+      const task = tasks.find((tk) => tk.id === id);
+      const li = document.createElement("li");
+      li.className = "credit-row";
+      const label = document.createElement("label");
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.checked = true;
+      cb.dataset.id = String(id);
+      const span = document.createElement("span");
+      span.textContent = task ? task.name : `#${id}`;
+      label.append(cb, span);
+      li.appendChild(label);
+      els.creditList.appendChild(li);
+    });
+    els.creditModal.hidden = false;
+    const onConfirm = () => {
+      const checked = [...els.creditList.querySelectorAll("input:checked")].map(
+        (cb) => Number(cb.dataset.id),
+      );
+      els.creditModal.hidden = true;
+      els.creditConfirm.removeEventListener("click", onConfirm);
+      resolve(checked);
+    };
+    els.creditConfirm.addEventListener("click", onConfirm);
+  });
 }
 
 function restDurationMinutes() {
@@ -1233,13 +1355,7 @@ async function switchMode(mode, { auto = false } = {}) {
 async function advanceAfterComplete() {
   if (state.timerMode === "pomodoro") {
     playChime("work");
-    const finished = await finishBlock(true);
-    if (!finished) {
-      return;
-    }
-    const next =
-      state.streakBlocks % state.settings.longEvery === 0 ? "longBreak" : "shortBreak";
-    await switchMode(next, { auto: true });
+    await completeBlockWithCredit();
     return;
   }
   playChime("rest");
@@ -1270,6 +1386,17 @@ async function skipSession() {
     return;
   }
   await switchMode("pomodoro", { auto: false });
+}
+
+// Restart re-runs the same block from its full duration: same block, same
+// touched tasks, no new server block, nothing lost. Pomodoro-only.
+function restartTimer() {
+  if (state.timerMode !== "pomodoro" || !state.activeBlock) {
+    return;
+  }
+  primeAudio();
+  playChime("start");
+  startCountdown(state.activeBlock.durationMin * 60, advanceAfterComplete);
 }
 
 /* ---------- settings ---------- */
@@ -1371,6 +1498,22 @@ els.timerBtn.addEventListener("click", async () => {
 });
 
 els.skipBtn.addEventListener("click", skipSession);
+els.restartBtn.addEventListener("click", restartTimer);
+
+// Drop a non-active touched task from this block so it won't be credited.
+els.touchedChips.addEventListener("click", (event) => {
+  const btn = event.target.closest("[data-chip-remove]");
+  if (!btn) {
+    return;
+  }
+  const id = Number(btn.dataset.chipRemove);
+  if (id === state.activeTaskId) {
+    return;
+  }
+  state.touchedTaskIds.delete(id);
+  updateTimerControls();
+  renderTaskList();
+});
 
 els.timerTabs.forEach((tab) => {
   tab.addEventListener("click", async () => {
@@ -1486,7 +1629,32 @@ async function handleTaskClick(event) {
   }
 
   if (action === "activate") {
-    state.selectedTaskId = taskId;
+    if (state.activeBlock) {
+      // Mid-block: switch the active task (timer keeps running), confirmed
+      // first. The new task joins the touched set for completion credit.
+      if (taskId === state.activeTaskId) {
+        return;
+      }
+      const task = state.dashboard?.tasks.find((tk) => tk.id === taskId);
+      const name = task ? task.name : "";
+      if (!window.confirm(t("timer.confirmSwitch", { name }))) {
+        return;
+      }
+      state.activeTaskId = taskId;
+      state.touchedTaskIds.add(taskId);
+      state.pendingTaskId = taskId;
+      updateTimerControls();
+      renderTaskList();
+      return;
+    }
+    // Idle/rest: toggle — click the selected task again to deselect it.
+    if (taskId === state.selectedTaskId) {
+      state.selectedTaskId = null;
+      state.pendingTaskId = null;
+    } else {
+      state.selectedTaskId = taskId;
+      state.pendingTaskId = taskId;
+    }
     updateTimerControls();
     renderTaskList();
     return;

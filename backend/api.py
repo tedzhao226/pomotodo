@@ -11,6 +11,7 @@ from backend.schemas import (
     BlockResponse,
     BlockStartResponse,
     CreateBlockRequest,
+    CreditBlockRequest,
     CreateTaskRequest,
     DashboardResponse,
     EndBlockRequest,
@@ -132,6 +133,19 @@ def end_block(
     except NotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return BlockResponse(**block)
+
+
+@router.post("/blocks/{block_id}/credit")
+def credit_block(
+    block_id: int,
+    body: CreditBlockRequest,
+    service: ServiceDep,
+) -> dict:
+    try:
+        credited = service.credit_block(block_id, body.task_ids)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return {"credited": credited}
 
 
 @router.get("/dashboard", response_model=DashboardResponse)

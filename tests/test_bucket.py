@@ -2,7 +2,7 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from backend.errors import ValidationError
+from backend.errors import NotFoundError, ValidationError
 from backend.models import Base
 from backend.repository import Repository
 from backend.service import Service
@@ -81,6 +81,40 @@ def test_only_completed_blocks_count_toward_task(service):
 
     done = next(t for t in service.get_dashboard()["tasks"] if t["id"] == task["id"])
     assert done["blocks_done"] == 1
+
+
+def _blocks_done(service, task_id):
+    task = next(t for t in service.get_dashboard()["tasks"] if t["id"] == task_id)
+    return task["blocks_done"]
+
+
+def test_credit_block_credits_each_checked_task(service):
+    a = service.create_task_from_raw("a")
+    b = service.create_task_from_raw("b")
+    c = service.create_task_from_raw("c")
+    block = service.start_block(a["id"], 30)  # block opened on A
+    credited = service.credit_block(block["id"], [a["id"], b["id"]])
+    assert credited == 2
+    assert _blocks_done(service, a["id"]) == 1  # anchor reused
+    assert _blocks_done(service, b["id"]) == 1  # extra completed block
+    assert _blocks_done(service, c["id"]) == 0  # untouched
+
+
+def test_credit_block_unchecked_anchor_is_discarded(service):
+    a = service.create_task_from_raw("a")
+    b = service.create_task_from_raw("b")
+    block = service.start_block(a["id"], 30)
+    credited = service.credit_block(block["id"], [b["id"]])  # A unchecked
+    assert credited == 1
+    assert _blocks_done(service, a["id"]) == 0  # anchor discarded
+    assert _blocks_done(service, b["id"]) == 1
+
+
+def test_credit_block_unknown_task_raises(service):
+    a = service.create_task_from_raw("a")
+    block = service.start_block(a["id"], 30)
+    with pytest.raises(NotFoundError):
+        service.credit_block(block["id"], [a["id"], 9999])
 
 
 def test_discarded_block_not_in_stats(service):

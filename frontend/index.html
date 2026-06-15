@@ -39,10 +39,12 @@
             <div class="timer-display" id="timer-display">00:00</div>
             <p id="timer-mode" class="timer-mode" data-i18n="timer.ready">Ready</p>
             <p class="current-task"><span data-i18n="timer.task">Task:</span> <strong id="current-task" data-i18n="timer.noTask">No task selected</strong></p>
+            <div id="touched-chips" class="touched-chips" hidden></div>
             <div id="streak-dots" class="streak-dots" hidden></div>
             <div class="timer-buttons">
-              <button type="button" id="timer-btn" class="primary" data-i18n="timer.startCap">START</button>
-              <button type="button" id="skip-btn" data-i18n="timer.skip" hidden>⏭ Skip</button>
+              <button type="button" id="restart-btn" class="timer-ctrl">↺</button>
+              <button type="button" id="timer-btn" class="timer-ctrl timer-ctrl-main">▶</button>
+              <button type="button" id="skip-btn" class="timer-ctrl">⏭</button>
             </div>
           </section>
 
@@ -264,6 +266,16 @@
       </section>
     </section>
   </main>
+  </div>
+
+  <div class="modal" id="credit-modal" hidden>
+    <div class="modal-card">
+      <h3 id="credit-title">Block done — credit which tasks?</h3>
+      <ul id="credit-list" class="credit-list"></ul>
+      <div class="modal-actions">
+        <button type="button" id="credit-confirm" class="primary">Confirm</button>
+      </div>
+    </div>
   </div>
 
   <script src="/frontend/i18n.js"></script>

@@ -48,6 +48,10 @@ class EndBlockRequest(BaseModel):
     completed: bool
 
 
+class CreditBlockRequest(BaseModel):
+    task_ids: list[int]
+
+
 class BlockResponse(BaseModel):
     id: int
     task_id: int

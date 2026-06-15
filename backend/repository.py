@@ -197,6 +197,30 @@ class Repository:
         self._session.flush()
         return self.get_block(block_id)
 
+    def credit_block(self, block_id: int, task_ids: list[int]) -> int | None:
+        # Close the open block and credit a completed block to each task that
+        # was touched during it. The block's own task reuses the block row;
+        # the rest get fresh completed rows of the same length.
+        block = self._session.get(Block, block_id)
+        if block is None:
+            return None
+        now = utcnow()
+        block.ended_at = now
+        block.completed = block.task_id in task_ids
+        extra = [tid for tid in task_ids if tid != block.task_id]
+        for tid in extra:
+            self._session.add(
+                Block(
+                    task_id=tid,
+                    duration_min=block.duration_min,
+                    started_at=now,
+                    ended_at=now,
+                    completed=True,
+                )
+            )
+        self._session.flush()
+        return (1 if block.completed else 0) + len(extra)
+
     def get_running_block(self) -> dict | None:
         block = self._session.execute(
             select(Block)

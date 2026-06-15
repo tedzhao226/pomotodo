@@ -109,6 +109,16 @@ class Service:
             raise NotFoundError(f"Block {block_id} not found")
         return block
 
+    def credit_block(self, block_id: int, task_ids: list[int]) -> int:
+        unique_ids = list(dict.fromkeys(task_ids))
+        for task_id in unique_ids:
+            if self._repo.get_task(task_id) is None:
+                raise NotFoundError(f"Task {task_id} not found")
+        credited = self._repo.credit_block(block_id, unique_ids)
+        if credited is None:
+            raise NotFoundError(f"Block {block_id} not found")
+        return credited
+
     def get_dashboard(self) -> dict:
         tasks = self._repo.list_tasks()
         stats = self._repo.get_task_block_stats()

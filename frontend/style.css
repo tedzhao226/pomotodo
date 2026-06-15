@@ -151,13 +151,14 @@ main {
 
 .main-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   align-items: start;
   gap: 1.25rem;
 }
 
 .col {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 1.25rem;
   align-content: start;
 }
@@ -166,6 +167,7 @@ main {
   background: #fcfbfa;
   border: 1px solid var(--line);
   border-radius: 14px;
+  min-width: 0;
   padding: 1.15rem 1.3rem;
 }
 
@@ -652,55 +654,173 @@ input[type="checkbox"] {
 
 .timer-buttons {
   display: flex;
+  align-items: center;
   justify-content: center;
-  gap: 0.6rem;
+  gap: 1.4rem;
 }
 
-.timer-buttons button {
-  flex: 1;
-  max-width: 200px;
-  padding: 0.75rem 1.1rem;
+.timer-ctrl {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   touch-action: manipulation;
   -webkit-user-select: none;
   user-select: none;
-  font-weight: 700;
-  font-size: 1rem;
-  background: #fcfcfb;
-  color: var(--ink-strong);
-  border: 1px solid var(--line);
-  border-radius: 11px;
-  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease,
-    transform 0.05s ease;
+  border: none;
+  border-radius: 50%;
+  line-height: 1;
+  transition: background 0.15s ease, color 0.15s ease, filter 0.15s ease,
+    opacity 0.15s ease, transform 0.05s ease;
 }
 
-.timer-buttons button:active:not(:disabled) {
+.timer-ctrl:not(.timer-ctrl-main) {
+  width: 48px;
+  height: 48px;
+  font-size: 1.3rem;
+  background: transparent;
+  color: var(--muted);
+}
+
+.timer-ctrl:not(.timer-ctrl-main):hover:not(:disabled) {
+  color: var(--mode-color);
+  background: color-mix(in srgb, var(--mode-color) 12%, transparent);
+}
+
+.timer-ctrl-main {
+  width: 76px;
+  height: 76px;
+  font-size: 1.9rem;
+  background: var(--mode-color);
+  color: #fff;
+  box-shadow: 0 8px 20px color-mix(in srgb, var(--mode-color) 30%, transparent);
+}
+
+.timer-ctrl-main:hover:not(:disabled) {
+  filter: brightness(1.05);
+}
+
+.timer-ctrl:active:not(:disabled) {
   transform: translateY(1px);
 }
 
-.timer-panel .timer-buttons button {
-  border-color: color-mix(in srgb, var(--mode-color) 35%, var(--line));
+.timer-ctrl:disabled {
+  opacity: 0.4;
+  cursor: default;
 }
 
-.timer-panel .timer-buttons button:hover:not(:disabled) {
-  border-color: var(--mode-color);
+.timer-ctrl-main:disabled {
+  opacity: 0.55;
+}
+
+/* Touched-task chips: live preview of the completion credit checklist. */
+.touched-chips {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.35rem;
+  margin: 0 0 0.6rem;
+}
+
+.touched-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid color-mix(in srgb, var(--mode-color) 35%, var(--line));
+  color: var(--ink-strong);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.chip-x {
+  padding: 0;
+  width: 16px;
+  height: 16px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.7rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.chip-x:hover {
+  background: color-mix(in srgb, var(--mode-color) 18%, transparent);
   color: var(--mode-color);
-  background: #fff;
 }
 
-#timer-btn.primary {
+.touched-chip.active {
   background: var(--mode-color);
-  color: #fff;
   border-color: transparent;
-  box-shadow: 0 6px 16px color-mix(in srgb, var(--mode-color) 28%, transparent);
-}
-
-#timer-btn.primary:hover:not(:disabled) {
-  background: var(--mode-color);
   color: #fff;
 }
 
-#timer-btn.primary:disabled {
-  background: var(--mode-color);
+/* A touched-but-not-active task row during a running block. */
+.task-item.touched {
+  border-left-color: color-mix(in srgb, var(--yellow) 45%, transparent);
+}
+
+/* Completion credit modal. */
+.modal {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(20, 20, 20, 0.4);
+  z-index: 50;
+}
+
+.modal[hidden] {
+  display: none;
+}
+
+.modal-card {
+  width: min(360px, 90vw);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 1.3rem;
+  box-shadow: var(--shadow-card);
+}
+
+.modal-card h3 {
+  margin: 0 0 0.9rem;
+}
+
+.credit-list {
+  list-style: none;
+  margin: 0 0 1.1rem;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.credit-row label {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--ink-strong);
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+#credit-confirm.primary {
+  padding: 0.55rem 1.3rem;
+  border: none;
+  border-radius: 10px;
+  background: var(--tomato);
+  color: #fff;
+  font-weight: 700;
 }
 
 .prompt {
@@ -942,13 +1062,21 @@ input[type="checkbox"] {
   white-space: nowrap;
 }
 
-/* Constant-width action area so a row's note button doesn't shift the columns. */
+/* Action buttons are collapsed (zero width) until the row is hovered, so they
+   stay hidden without leaving an empty gap. Rows with an open note keep them. */
 .row-actions {
   flex: none;
-  width: 116px;
+  width: 0;
+  overflow: hidden;
   display: flex;
   justify-content: flex-end;
   gap: 0.3rem;
+  transition: width 0.12s ease;
+}
+
+.task-row:hover .row-actions,
+.task-item:has(.row-note.active) .row-actions {
+  width: 116px;
 }
 
 .row-edit,
