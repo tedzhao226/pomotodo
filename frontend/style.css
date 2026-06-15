@@ -758,11 +758,6 @@ input[type="checkbox"] {
   color: #fff;
 }
 
-/* A touched-but-not-active task row during a running block. */
-.task-item.touched {
-  border-left-color: color-mix(in srgb, var(--yellow) 45%, transparent);
-}
-
 /* Completion credit modal. */
 .modal {
   position: fixed;
@@ -831,50 +826,6 @@ input[type="checkbox"] {
 
 .prompt p {
   margin: 0 0 0.75rem;
-}
-
-.running-banner {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  background: var(--yellow-soft);
-  border: 1px solid var(--yellow-line);
-  padding: 0.55rem 0.8rem;
-  border-radius: 10px;
-  margin-bottom: 0.8rem;
-  font-size: 0.88rem;
-}
-
-.running-dot {
-  flex: none;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--green-deep);
-  animation: running-pulse 1.6s ease-out infinite;
-}
-
-.running-name {
-  font-weight: 700;
-  color: var(--ink-strong);
-}
-
-.running-meta {
-  margin-left: auto;
-  color: var(--muted);
-  font-size: 0.8rem;
-}
-
-@keyframes running-pulse {
-  0% {
-    box-shadow: 0 0 0 0 color-mix(in srgb, var(--green-deep) 55%, transparent);
-  }
-  70% {
-    box-shadow: 0 0 0 6px transparent;
-  }
-  100% {
-    box-shadow: 0 0 0 0 transparent;
-  }
 }
 
 /* ---------- today log ---------- */
@@ -969,10 +920,6 @@ input[type="checkbox"] {
 
 .task-item.active {
   border-left-color: var(--tomato-dark);
-}
-
-.task-item.running {
-  border-left-color: var(--yellow);
 }
 
 .task-item.is-done .task-name {

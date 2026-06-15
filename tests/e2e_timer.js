@@ -1,17 +1,30 @@
 // End-to-end test for the stateless-block timer, mirroring docs/timer-states.md.
 //
 // Run by evaluating this whole file in a browser pointed at a running app
-// (e.g. a clean test server). It drives the real DOM/state and returns a JSON
-// report { passed, failed, results }. Used via cmux browser eval; it does not
-// depend on browser-harness.
+// (a clean test server). It drives the real DOM/state and returns a JSON
+// report { passed, failedCount, failed }. Used via cmux browser eval; it does
+// NOT depend on browser-harness.
 //
 //   SCRIPT=$(cat tests/e2e_timer.js); cmux browser eval --surface <id> "$SCRIPT"
 //
-// Assumes the app globals `state`, `api`, `syncNow` are reachable (app.js is a
-// classic script, so its top-level consts are in scope for eval).
+// Assumes the app globals `state`, `api`, `syncNow`, `saveSettings`,
+// `updateTimerControls`, `timerIsPaused`, `t` are reachable (app.js is a
+// classic script, so its top-level bindings are in scope for eval).
 
+// The run takes ~20s; cmux `browser eval` resolves faster than that, so the
+// final report is also stashed on `window.__e2e` (null until done). Callers
+// can `browser wait --function "window.__e2e!==null"` then read it.
 (async () => {
+  window.__e2e = null;
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const waitFor = async (cond, ms = 5000) => {
+    const t0 = Date.now();
+    while (Date.now() - t0 < ms) {
+      if (cond()) return true;
+      await sleep(80);
+    }
+    return false;
+  };
   const results = [];
   const check = (name, cond) => results.push({ name, ok: !!cond });
 
@@ -26,9 +39,55 @@
   const clickRow = (id) => row(id).querySelector(".task-row").click();
   const el = (s) => document.querySelector(s);
 
-  // ---- setup: deterministic settings, fresh tasks ----
-  state.settings.autoStartRest = false;
-  state.settings.autoStartPomodoros = false;
+  // Deterministic settings (ignore any persisted localStorage values).
+  const setSettings = (over) => {
+    state.settings = {
+      ...state.settings,
+      defaultDuration: 30,
+      shortRest: 5,
+      longRest: 20,
+      longEvery: 3,
+      autoStartPomodoros: false,
+      autoStartRest: false,
+      ...over,
+    };
+    saveSettings(state.settings);
+    state.pendingDuration = state.settings.defaultDuration;
+    updateTimerControls();
+  };
+
+  // Start a fresh block on a task id (direct select avoids toggle ambiguity).
+  const start = async (id) => {
+    state.selectedTaskId = id;
+    updateTimerControls();
+    el("#timer-btn").click();
+    await waitFor(() => !!state.activeBlock && state.running);
+  };
+  // Force the deadline-based timer to expire and wait for the credit modal.
+  const expire = async () => {
+    state.deadline = Date.now() - 1000;
+    await waitFor(() => el("#credit-modal").hidden === false);
+  };
+  // Confirm the completion checklist, optionally unchecking some task ids;
+  // wait until the block is fully cleared (credit POST + sync done).
+  const confirmCredit = async (uncheck = []) => {
+    for (const id of uncheck) {
+      const box = [...document.querySelectorAll("#credit-list input")].find(
+        (c) => Number(c.dataset.id) === id,
+      );
+      if (box) box.checked = false;
+    }
+    el("#credit-confirm").click();
+    await waitFor(() => state.activeBlock === null && el("#credit-modal").hidden === true);
+  };
+  const abortEsc = async () => {
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    await waitFor(() => state.activeBlock === null);
+  };
+
+  // ---- setup ----
+  setSettings();
+  window.confirm = () => true;
   const sfx = Date.now().toString().slice(-5);
   const A = "E2E-A-" + sfx;
   const B = "E2E-B-" + sfx;
@@ -37,110 +96,193 @@
     await api("/api/tasks", { method: "POST", body: JSON.stringify({ raw: nm }) });
   }
   await syncNow();
+  // Make the run independent of leftover state: end any open block lingering
+  // server-side (from a prior run), then clear client timer state.
+  for (let i = 0; i < 5; i++) {
+    const rb = state.dashboard && state.dashboard.running_block;
+    if (!rb) break;
+    await api(`/api/blocks/${rb.id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ completed: false }),
+    });
+    await syncNow();
+  }
+  state.rehydrated = true;
+  clearTimerInterval();
+  state.activeBlock = null;
+  state.activeTaskId = null;
+  state.touchedTaskIds = new Set();
+  state.running = false;
   const aId = idOf(A);
   const bId = idOf(B);
   const cId = idOf(C);
 
-  // ---- 1. no auto-select; START disabled with nothing picked ----
+  // ---- VAL-13: first-load paused guard (pure logic) ----
   state.selectedTaskId = null;
-  updateTimerControls();
-  check("idle: no auto-select", state.selectedTaskId === null);
-  check("idle: START disabled when none", el("#timer-btn").disabled === true);
-  check("idle: label says no task", el("#current-task").textContent === t("timer.noTask"));
-  check("idle: clock shows full duration", el("#timer-display").textContent === "30:00");
+  state.activeBlock = null;
+  state.running = false;
+  state.remainingSeconds = 0;
+  check("VAL13: remaining 0 is not paused", timerIsPaused() === false);
+  state.remainingSeconds = 60;
+  check("VAL13: 0<remaining<full is paused", timerIsPaused() === true);
+  state.remainingSeconds = 1800;
+  check("VAL13: remaining==full is not paused", timerIsPaused() === false);
 
-  // ---- 2. select toggles on ----
+  // ---- VAL-1: idle, no auto-select (init like a fresh load) ----
+  state.activeBlock = null;
+  state.running = false;
+  state.remainingSeconds = 0;
+  state.selectedTaskId = null;
+  applySettingsToControls(); // inits the idle clock
+  updateTimerControls(); // refreshes the task label
+  check("VAL1: no auto-select", state.selectedTaskId === null);
+  check("VAL1: START disabled when none", el("#timer-btn").disabled === true);
+  check("VAL1: label = no task", el("#current-task").textContent === t("timer.noTask"));
+  check("VAL1: clock = full duration", el("#timer-display").textContent === "30:00");
+
+  // ---- VAL-2: select / deselect toggle ----
   clickRow(aId);
-  check("select: selectedTaskId set", state.selectedTaskId === aId);
-  check("select: START enabled", el("#timer-btn").disabled === false);
-  check("select: row highlighted", row(aId).classList.contains("active"));
-
-  // ---- 3. deselect toggles off ----
+  check("VAL2: select sets id", state.selectedTaskId === aId);
+  check("VAL2: START enabled", el("#timer-btn").disabled === false);
+  check("VAL2: row highlighted", row(aId).classList.contains("active"));
   clickRow(aId);
-  check("deselect: cleared", state.selectedTaskId === null);
-  check("deselect: START disabled again", el("#timer-btn").disabled === true);
+  check("VAL2: deselect clears", state.selectedTaskId === null);
+  check("VAL2: START disabled again", el("#timer-btn").disabled === true);
 
-  // ---- 4. start a block on A ----
-  clickRow(aId);
-  el("#timer-btn").click();
-  await sleep(900);
-  check("start: activeBlock open", !!state.activeBlock);
-  check("start: activeTaskId = A", state.activeTaskId === aId);
-  check("start: running", state.running === true);
-  check("start: touched = {A}", state.touchedTaskIds.size === 1 && state.touchedTaskIds.has(aId));
+  // ---- VAL-3: start a block ----
+  await start(aId);
+  check("VAL3: activeBlock open", !!state.activeBlock);
+  check("VAL3: activeTaskId = A", state.activeTaskId === aId);
+  check("VAL3: running", state.running === true);
+  check("VAL3: touched = {A}", state.touchedTaskIds.size === 1 && state.touchedTaskIds.has(aId));
+  check("VAL3: only the active row is highlighted", document.querySelectorAll(".task-item.active").length === 1 && row(aId).classList.contains("active"));
 
-  // ---- 5. switch declined -> no change ----
+  // ---- VAL-7: pause / resume ----
+  el("#timer-btn").click(); // pause
+  await sleep(300);
+  const pausedRemaining = state.remainingSeconds;
+  check("VAL7: pause stops running", state.running === false);
+  await sleep(1100);
+  check("VAL7: paused clock frozen", state.remainingSeconds === pausedRemaining);
+  check("VAL7: block kept while paused", !!state.activeBlock);
+  el("#timer-btn").click(); // resume
+  await sleep(300);
+  check("VAL7: resume runs", state.running === true);
+  check("VAL7: resume same block", !!state.activeBlock);
+
+  // ---- VAL-4: switch (decline then accept) ----
   window.confirm = () => false;
   clickRow(bId);
-  await sleep(200);
-  check("switch declined: still A", state.activeTaskId === aId);
-  check("switch declined: touched still 1", state.touchedTaskIds.size === 1);
-
-  // ---- 6. switch accepted -> active moves, timer continues ----
+  await sleep(150);
+  check("VAL4: declined keeps A", state.activeTaskId === aId);
+  check("VAL4: declined touched still 1", state.touchedTaskIds.size === 1);
   window.confirm = () => true;
   const dBefore = state.deadline;
   clickRow(bId);
-  await sleep(200);
-  check("switch: active = B", state.activeTaskId === bId);
-  check("switch: touched grows to 2", state.touchedTaskIds.size === 2);
-  check("switch: still running", state.running === true);
-  check("switch: deadline unchanged (timer continues)", state.deadline === dBefore);
+  await sleep(150);
+  check("VAL4: accepted active = B", state.activeTaskId === bId);
+  check("VAL4: touched grows to 2", state.touchedTaskIds.size === 2);
+  check("VAL4: still running", state.running === true);
+  check("VAL4: deadline unchanged", state.deadline === dBefore);
 
-  // ---- 7. switch to C, chip rendering ----
+  // ---- VAL-5: chips + remove ----
   clickRow(cId);
-  await sleep(200);
-  check("switch: touched = 3", state.touchedTaskIds.size === 3);
-  check("chips: 3 rendered", document.querySelectorAll(".touched-chip").length === 3);
-  check("chips: active has no remove", !document.querySelector(".touched-chip.active .chip-x"));
-  check("chips: 2 removable", document.querySelectorAll(".chip-x").length === 2);
-
-  // ---- 8. remove a touched chip (B) ----
+  await sleep(150);
+  check("VAL5: touched = 3", state.touchedTaskIds.size === 3);
+  check("VAL5: only one row highlighted (active), not all touched", document.querySelectorAll(".task-item.active").length === 1 && row(cId).classList.contains("active"));
+  check("VAL5: 3 chips", document.querySelectorAll(".touched-chip").length === 3);
+  check("VAL5: active chip has no remove", !document.querySelector(".touched-chip.active .chip-x"));
+  check("VAL5: 2 removable", document.querySelectorAll(".chip-x").length === 2);
   el(`[data-chip-remove="${bId}"]`).click();
-  await sleep(200);
-  check("remove chip: B dropped", !state.touchedTaskIds.has(bId));
-  check("remove chip: touched = 2", state.touchedTaskIds.size === 2);
+  await sleep(150);
+  check("VAL5: removed B from touched", !state.touchedTaskIds.has(bId));
+  check("VAL5: touched = 2", state.touchedTaskIds.size === 2);
 
-  // ---- 9. restart -> same block, clock reset, touched kept ----
+  // ---- VAL-6: restart (same block, full clock, exact touched {A,C}) ----
   const blockId = state.activeBlock.id;
   el("#restart-btn").click();
   await sleep(200);
-  check("restart: same block id", state.activeBlock.id === blockId);
-  check("restart: clock back to full", state.remainingSeconds > 1790);
-  check("restart: touched preserved (A,C)", state.touchedTaskIds.size === 2 && state.touchedTaskIds.has(cId));
-
-  // ---- 10. complete -> credit checklist; uncheck A, confirm -> only C ----
-  state.deadline = Date.now() - 1000; // deadline-based timer: force expiry
-  await sleep(1600);
-  check("complete: credit modal shown", el("#credit-modal").hidden === false);
-  check("complete: checklist lists 2", document.querySelectorAll("#credit-list input").length === 2);
-  const aBox = [...document.querySelectorAll("#credit-list input")].find(
-    (c) => Number(c.dataset.id) === aId,
+  check("VAL6: same block id", state.activeBlock.id === blockId);
+  check("VAL6: clock back to full", state.remainingSeconds > 1790);
+  check(
+    "VAL6: touched preserved {A,C}",
+    state.touchedTaskIds.size === 2 &&
+      state.touchedTaskIds.has(aId) &&
+      state.touchedTaskIds.has(cId) &&
+      !state.touchedTaskIds.has(bId),
   );
-  if (aBox) aBox.checked = false; // drop A from credit
-  el("#credit-confirm").click();
-  await sleep(1600);
-  check("credit: C +1", bd(C) === 1);
-  check("credit: A unchecked -> 0", bd(A) === 0);
-  check("credit: B removed earlier -> 0", bd(B) === 0);
-  check("credit: block cleared", state.activeBlock === null);
 
-  // ---- 11. abort (Esc) -> no credit ----
+  // ---- VAL-8: completion credit (checklist defaults checked; uncheck A) ----
+  const streakBefore = state.streakBlocks;
+  await expire();
+  check("VAL8: credit modal shown", el("#credit-modal").hidden === false);
+  check("VAL8: checklist lists touched 2", document.querySelectorAll("#credit-list input").length === 2);
+  check(
+    "VAL8: all boxes checked by default",
+    [...document.querySelectorAll("#credit-list input")].every((c) => c.checked),
+  );
+  await confirmCredit([aId]); // drop A
+  check("VAL8: C credited +1", bd(C) === 1);
+  check("VAL8: A unchecked -> 0", bd(A) === 0);
+  check("VAL8: B removed earlier -> 0", bd(B) === 0);
+  check("VAL8: streak +1 once", state.streakBlocks === streakBefore + 1);
+  check("VAL8: block cleared", state.activeBlock === null);
+  check("VAL8: transitions to short rest", state.timerMode === "shortBreak");
+
+  // ---- VAL-9: abort paths (Esc + Skip) ----
+  state.streakBlocks = 0;
   el('.timer-tab[data-mode="pomodoro"]').click();
   await sleep(150);
-  clickRow(aId);
-  el("#timer-btn").click();
-  await sleep(900);
-  const aBeforeAbort = bd(A);
-  document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
-  await sleep(1200);
-  check("abort: block cleared", state.activeBlock === null);
-  check("abort: A not credited", bd(A) === aBeforeAbort);
+  await start(aId);
+  const aBeforeEsc = bd(A);
+  await abortEsc();
+  check("VAL9: Esc clears block", state.activeBlock === null);
+  check("VAL9: Esc no credit", bd(A) === aBeforeEsc);
+  check("VAL9: exit clears list highlight", document.querySelectorAll(".task-item.active").length === 0);
+  check("VAL9: exit clears timer label", el("#current-task").textContent === t("timer.noTask"));
+
+  el('.timer-tab[data-mode="pomodoro"]').click();
+  await sleep(150);
+  await start(aId);
+  const aBeforeSkip = bd(A);
+  el("#skip-btn").click(); // skip -> confirm (window.confirm true) -> abort to break
+  await waitFor(() => state.activeBlock === null);
+  check("VAL9: Skip clears block", state.activeBlock === null);
+  check("VAL9: Skip no credit", bd(A) === aBeforeSkip);
+
+  // ---- VAL-11: long break when streak hits the interval ----
+  setSettings({ longEvery: 1 }); // every completion lands on a long break
+  el('.timer-tab[data-mode="pomodoro"]').click();
+  await sleep(150);
+  await start(aId);
+  await expire();
+  await confirmCredit();
+  check("VAL11: long break at interval", state.timerMode === "longBreak");
+
+  // ---- VAL-10: auto-start rest, then auto-start next pomodoro ----
+  setSettings({ longEvery: 3, autoStartRest: true, autoStartPomodoros: true });
+  state.streakBlocks = 0;
+  el('.timer-tab[data-mode="pomodoro"]').click();
+  await sleep(150);
+  await start(cId);
+  await expire();
+  await confirmCredit(); // credit C, then auto-start the break
+  check("VAL10: auto-started rest", state.timerMode === "shortBreak" && state.running === true);
+  // finish the break -> auto-start next pomodoro (rest completion has no modal)
+  state.deadline = Date.now() - 1000;
+  await waitFor(() => state.timerMode === "pomodoro" && !!state.activeBlock);
+  check("VAL10: auto-started next pomodoro", state.timerMode === "pomodoro" && !!state.activeBlock);
+
+  // cleanup: abort any running block and restore quiet settings
+  if (state.activeBlock) await abortEsc();
+  setSettings();
 
   const passed = results.filter((r) => r.ok).length;
   const failed = results.filter((r) => !r.ok);
-  return JSON.stringify({
+  window.__e2e = JSON.stringify({
     passed,
     failedCount: failed.length,
     failed: failed.map((r) => r.name),
   });
+  return window.__e2e;
 })();

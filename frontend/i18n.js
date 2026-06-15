@@ -126,7 +126,6 @@ const MESSAGES = {
     "row.delete": "Delete",
     "row.showNote": "Show note",
 
-    "running.meta": "{min} min · started {t}",
     "confirm.clearCompleted":
       "Clear completed todos from your list? (History is kept.)",
     "confirm.deleteTask":
@@ -266,7 +265,6 @@ const MESSAGES = {
     "row.delete": "删除",
     "row.showNote": "显示笔记",
 
-    "running.meta": "{min} 分钟 · 开始于 {t}",
     "confirm.clearCompleted": "从列表清除已完成待办？（历史保留。）",
     "confirm.deleteTask": "从待办中移除「{name}」？（历史保留。）",
     "err.endBlock": "无法结束番茄：{msg}",

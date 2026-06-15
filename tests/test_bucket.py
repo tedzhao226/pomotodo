@@ -117,6 +117,23 @@ def test_credit_block_unknown_task_raises(service):
         service.credit_block(block["id"], [a["id"], 9999])
 
 
+def test_credit_block_dedupes_task_ids(service):
+    a = service.create_task_from_raw("a")
+    b = service.create_task_from_raw("b")
+    block = service.start_block(a["id"], 30)
+    # Duplicate ids must not double-credit a task.
+    credited = service.credit_block(block["id"], [a["id"], a["id"], b["id"], b["id"]])
+    assert credited == 2
+    assert _blocks_done(service, a["id"]) == 1
+    assert _blocks_done(service, b["id"]) == 1
+
+
+def test_credit_block_unknown_block_raises(service):
+    a = service.create_task_from_raw("a")
+    with pytest.raises(NotFoundError):
+        service.credit_block(9999, [a["id"]])
+
+
 def test_discarded_block_not_in_stats(service):
     task = service.create_task_from_raw("focus")
     aborted = service.start_block(task["id"], 30)

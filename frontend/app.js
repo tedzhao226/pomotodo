@@ -80,7 +80,6 @@ const els = {
   timerPanel: document.getElementById("timer-panel"),
   timerTabs: document.querySelectorAll(".timer-tab"),
   streakDots: document.getElementById("streak-dots"),
-  runningBanner: document.getElementById("running-block-banner"),
   todayList: document.getElementById("today-list"),
   backlogList: document.getElementById("backlog-list"),
   plannedSum: document.getElementById("planned-sum"),
@@ -331,6 +330,7 @@ function renderStreak() {
 }
 
 function runTicker() {
+  clearTimerInterval(); // never leave a second interval running (e.g. resume)
   state.timerInterval = setInterval(() => {
     const prev = state.remainingSeconds;
     state.remainingSeconds = Math.ceil(
@@ -540,28 +540,20 @@ function tasksInBucket(bucket) {
 }
 
 function taskItem(task, draggable) {
-  const data = state.dashboard;
   const li = document.createElement("li");
   li.className = "task-item";
   li.dataset.id = task.id;
   if (draggable && state.editingTaskId !== task.id) {
     li.draggable = true;
   }
-  if (state.activeBlock) {
-    // During a block, highlight the active task and mark the touched ones.
-    if (task.id === state.activeTaskId) {
-      li.classList.add("running");
-    } else if (state.touchedTaskIds.has(task.id)) {
-      li.classList.add("touched");
-    }
-  } else if (data.running_block && data.running_block.task_id === task.id) {
-    li.classList.add("running");
+  // One highlight only: the focused task (active during a block, else the
+  // idle selection). Touched tasks live in the timer chips, not the list.
+  const focusId = state.activeBlock ? state.activeTaskId : state.selectedTaskId;
+  if (task.id === focusId) {
+    li.classList.add("active");
   }
   if (task.status === "done") {
     li.classList.add("is-done");
-  }
-  if (!state.activeBlock && task.id === state.selectedTaskId) {
-    li.classList.add("active");
   }
   li.innerHTML =
     state.editingTaskId === task.id ? editorHtml(task) : rowHtml(task);
@@ -646,28 +638,6 @@ function renderDashboard() {
   if (!state.dashboard) {
     return;
   }
-  const data = state.dashboard;
-
-  if (data.running_block) {
-    const rb = data.running_block;
-    // During a live block the focus may have switched client-side; show the
-    // active task's name rather than the (initial) server block's task.
-    const activeTask =
-      state.activeBlock &&
-      data.tasks.find((task) => task.id === state.activeTaskId);
-    const name = activeTask ? activeTask.name : rb.task_name;
-    els.runningBanner.hidden = false;
-    els.runningBanner.innerHTML =
-      `<span class="running-dot"></span>` +
-      `<span class="running-name">${escapeHtml(name)}</span>` +
-      `<span class="running-meta">${t("running.meta", {
-        min: rb.duration_min,
-        t: hourMinute(rb.started_at),
-      })}</span>`;
-  } else {
-    els.runningBanner.hidden = true;
-  }
-
   renderTaskList();
   updateTimerControls();
 }
@@ -1221,6 +1191,7 @@ async function startBlock(taskId, durationMin) {
   state.pendingTaskId = taskId;
   state.pendingDuration = durationMin;
   startCountdown(durationMin * 60, advanceAfterComplete);
+  renderTaskList(); // reflect the active-row highlight immediately
 }
 
 async function finishBlock(completed) {
@@ -1243,6 +1214,7 @@ async function finishBlock(completed) {
   state.activeBlock = null;
   state.activeTaskId = null;
   state.touchedTaskIds = new Set();
+  state.selectedTaskId = null; // clear the list highlight when the block ends
   if (!completed) {
     state.streakBlocks = 0;
     renderStreak();
@@ -1278,6 +1250,7 @@ async function completeBlockWithCredit() {
   state.activeBlock = null;
   state.activeTaskId = null;
   state.touchedTaskIds = new Set();
+  state.selectedTaskId = null; // clear the list highlight when the block ends
   state.streakBlocks += 1;
   state.pendingTaskId = lastActive;
   state.pendingDuration = block.durationMin;
