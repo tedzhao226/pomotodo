@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-FROM ghcr.io/astral-sh/uv:0.10.7-python3.12-bookworm-slim AS builder
+FROM ghcr.io/astral-sh/uv:0.9.2-python3.12-bookworm-slim AS builder
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy
 WORKDIR /app
@@ -28,6 +28,7 @@ COPY backend ./backend
 COPY alembic ./alembic
 COPY alembic.ini ./
 COPY frontend ./frontend
+COPY scripts ./scripts
 COPY docker/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh && chown -R app:app /app
 

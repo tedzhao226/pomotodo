@@ -1,9 +1,10 @@
 # Auth & Multi-tenant — Product Spec
 
-Links: none provided.
+Companion docs: TECH.md · HUMAN.md · EDUCATION.md · overview.html
 
 ## Summary
 
+Pomotodo becomes a commercial, multi-tenant SaaS instead of a single-user app.
 Users sign in with Google or email/password through Supabase Auth.
 Every task, block, and (eventually) setting becomes private to the signed-in user.
 An unauthenticated visitor sees a sign-in screen instead of the app.
@@ -47,4 +48,7 @@ Requests that reference another user's task/block id are rejected as not-found.
 ## Sequencing
 
 This is the first change of the productionization set; it adds `user_id` scoping that
-the deployment, i18n, and tag-stats specs build on top of.
+the deployment, i18n, and tag-stats specs build on top of. Hosting and the dev/prod
+environment split are owned by `specs/20260613-2207-deployment-supabase-vercel/`
+(Supabase + Render + Vercel/Cloudflare); this spec only adds the auth/isolation that
+makes that deploy safe.

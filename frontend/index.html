@@ -17,7 +17,7 @@
       <div class="user">awesomeuser ▾</div>
     </div>
     <nav class="nav" id="nav">
-      <button type="button" class="nav-btn active" data-view="main" data-i18n="nav.main">Main</button>
+      <button type="button" class="nav-btn active" data-view="pomotodo" data-i18n="nav.main">Pomotodo</button>
       <button type="button" class="nav-btn" data-view="stats" data-i18n="nav.stats">Statistics</button>
       <button type="button" class="nav-btn" data-view="history" data-i18n="nav.history">History</button>
       <button type="button" class="nav-btn" data-view="settings" data-i18n="nav.settings">Settings</button>
@@ -27,24 +27,22 @@
   <main>
     <!-- MAIN VIEW -->
     <section class="view active" id="view-main">
-      <div id="active-banner" class="active-banner" hidden></div>
       <div class="main-grid">
         <div class="col">
           <section class="panel timer-panel" id="timer-panel">
             <h2 data-i18n="timer.title">Timer</h2>
-            <span id="phase-pill" class="phase-pill" hidden></span>
+            <div class="timer-tabs" aria-label="Timer mode">
+              <button type="button" class="timer-tab active" data-mode="pomodoro" data-i18n="timer.tabPomodoro">Pomodoro</button>
+              <button type="button" class="timer-tab" data-mode="shortBreak" data-i18n="timer.tabShortBreak">Short Break</button>
+              <button type="button" class="timer-tab" data-mode="longBreak" data-i18n="timer.tabLongBreak">Long Break</button>
+            </div>
             <div class="timer-display" id="timer-display">00:00</div>
             <p id="timer-mode" class="timer-mode" data-i18n="timer.ready">Ready</p>
             <p class="current-task"><span data-i18n="timer.task">Task:</span> <strong id="current-task" data-i18n="timer.noTask">No task selected</strong></p>
             <div id="streak-dots" class="streak-dots" hidden></div>
             <div class="timer-buttons">
-              <button type="button" id="timer-btn" class="primary" data-i18n="timer.start">▶ Start</button>
-            </div>
-            <p class="timer-hint" id="timer-hint" hidden>Hold to stop</p>
-            <div id="continue-rest-prompt" class="prompt" hidden>
-              <p data-i18n="prompt.blockFinished">Block finished. What next?</p>
-              <button type="button" id="continue-btn" data-i18n="prompt.continue">Continue (skip rest)</button>
-              <button type="button" id="rest-btn" data-i18n="prompt.takeRest">Take a rest</button>
+              <button type="button" id="timer-btn" class="primary" data-i18n="timer.startCap">START</button>
+              <button type="button" id="skip-btn" data-i18n="timer.skip" hidden>⏭ Skip</button>
             </div>
           </section>
 
@@ -210,9 +208,20 @@
       <section class="panel">
         <h2 data-i18n="settings.title">Settings</h2>
         <form id="settings-form" class="settings-form">
+          <h3 class="settings-group" data-i18n="settings.groupGeneral">General</h3>
           <label><span data-i18n="settings.dailyGoal">Daily goal (pomos)</span>
             <input type="number" min="1" id="set-goal">
+            <small class="settings-hint" data-i18n="settings.dailyGoalHint">Pomodoros you aim to finish each day.</small>
           </label>
+          <label><span data-i18n="settings.language">Language</span>
+            <select id="set-lang">
+              <option value="en">English</option>
+              <option value="zh">中文</option>
+            </select>
+            <small class="settings-hint" data-i18n="settings.languageHint">Interface language.</small>
+          </label>
+
+          <h3 class="settings-group" data-i18n="settings.groupTimer">Timer</h3>
           <label><span data-i18n="settings.defaultDuration">Default duration (min)</span>
             <select id="set-duration">
               <option value="30">30</option>
@@ -220,24 +229,33 @@
               <option value="60">60</option>
               <option value="90">90</option>
             </select>
+            <small class="settings-hint" data-i18n="settings.defaultDurationHint">Length of a new pomodoro.</small>
           </label>
           <label><span data-i18n="settings.shortRest">Short rest (min)</span>
             <input type="number" min="1" id="set-short-rest">
+            <small class="settings-hint" data-i18n="settings.shortRestHint">Break after a normal pomodoro.</small>
           </label>
           <label><span data-i18n="settings.longRest">Long rest (min)</span>
             <input type="number" min="1" id="set-long-rest">
+            <small class="settings-hint" data-i18n="settings.longRestHint">Longer break after several pomodoros.</small>
           </label>
-          <label><span data-i18n="settings.longEvery">Long rest every (pomos)</span>
+          <label><span data-i18n="settings.longBreakInterval">Long break interval</span>
             <input type="number" min="1" id="set-long-every">
+            <small class="settings-hint" data-i18n="settings.longBreakIntervalHint">Pomodoros before a long break.</small>
           </label>
-          <label><span data-i18n="settings.language">Language</span>
-            <select id="set-lang">
-              <option value="en">English</option>
-              <option value="zh">中文</option>
-            </select>
-          </label>
-          <label class="settings-check"><input type="checkbox" id="set-autorest"> <span data-i18n="settings.autoStartRest">Auto-start rest</span></label>
+
+          <h3 class="settings-group" data-i18n="settings.groupAutomation">Automation</h3>
+          <label class="settings-check"><input type="checkbox" id="set-autopomodoros"> <span data-i18n="settings.autoStartPomodoros">Auto start pomodoros</span></label>
+          <small class="settings-hint" data-i18n="settings.autoStartPomodorosHint">Start the next pomodoro automatically after a break.</small>
+          <label class="settings-check"><input type="checkbox" id="set-autorest"> <span data-i18n="settings.autoStartBreaks">Auto start breaks</span></label>
+          <small class="settings-hint" data-i18n="settings.autoStartBreaksHint">Start the break automatically when a pomodoro ends.</small>
+
+          <h3 class="settings-group" data-i18n="settings.groupSound">Sound</h3>
           <label class="settings-check"><input type="checkbox" id="set-sound"> <span data-i18n="settings.sound">Sound</span></label>
+          <small class="settings-hint" data-i18n="settings.soundHint">Play a chime when a pomodoro or break ends.</small>
+          <label class="settings-check"><input type="checkbox" id="set-tick"> <span data-i18n="settings.tick">Ticking sound</span></label>
+          <small class="settings-hint" data-i18n="settings.tickHint">Soft tick every second while a pomodoro runs.</small>
+
           <div class="settings-actions">
             <button type="submit" data-i18n="settings.save">Save</button>
             <span id="settings-saved" class="settings-saved" data-i18n="settings.saved" hidden>Saved</span>

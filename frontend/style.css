@@ -21,6 +21,7 @@
   --yellow-soft: #fdf4d6;
   --yellow-line: #f0e2a6;
   --blue: #6aa9e0;
+  --long-break-blue: #5f8fd8;
   --orange: #f0a857;
   --font: "Quicksand", ui-rounded, "SF Pro Rounded", system-ui, -apple-system, sans-serif;
   --shadow-card: 0 1px 2px rgba(40, 35, 30, 0.04), 0 12px 36px rgba(40, 35, 30, 0.07);
@@ -334,28 +335,6 @@ input[type="checkbox"] {
   font-size: 0.9rem;
 }
 
-/* ---------- active-task banner ---------- */
-.active-banner {
-  margin: 0 auto;
-  max-width: 360px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.4rem;
-  background: var(--yellow-soft);
-  border: 1px solid var(--yellow-line);
-  color: var(--ink-strong);
-  padding: 0.6rem 1rem;
-  border-radius: 9px;
-  font-weight: 600;
-  font-size: 0.95rem;
-}
-
-.active-banner .check {
-  color: var(--green-deep);
-  font-weight: 700;
-}
-
 /* ---------- task buckets ---------- */
 .bucket + .bucket {
   margin-top: 1rem;
@@ -432,6 +411,56 @@ input[type="checkbox"] {
 /* ---------- timer ---------- */
 .timer-panel {
   text-align: center;
+  --mode-color: var(--tomato);
+  --mode-soft: #fff3f1;
+  background: var(--mode-soft);
+}
+
+.timer-panel.mode-pomodoro {
+  --mode-color: var(--tomato);
+  --mode-soft: #fff3f1;
+}
+
+.timer-panel.mode-shortBreak {
+  --mode-color: var(--green-deep);
+  --mode-soft: #f0fbf3;
+}
+
+.timer-panel.mode-longBreak {
+  --mode-color: var(--long-break-blue);
+  --mode-soft: #eff6ff;
+}
+
+.timer-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.35rem;
+  margin-bottom: 0.9rem;
+  padding: 0.25rem;
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+
+.timer-tab {
+  min-width: 0;
+  padding: 0.45rem 0.35rem;
+  background: transparent;
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 0.82rem;
+  white-space: nowrap;
+}
+
+.timer-tab:hover:not(:disabled) {
+  background: #fff;
+  color: var(--ink-strong);
+}
+
+.timer-tab.active,
+.timer-tab.active:hover:not(:disabled) {
+  background: var(--mode-color);
+  color: #fff;
 }
 
 .timer-display {
@@ -439,7 +468,7 @@ input[type="checkbox"] {
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.02em;
-  color: var(--ink-strong);
+  color: var(--mode-color);
   margin: 0.25rem 0;
   transition: color 0.2s ease;
 }
@@ -448,40 +477,6 @@ input[type="checkbox"] {
   margin: 0 0 0.5rem;
   color: var(--muted);
   font-size: 0.9rem;
-}
-
-/* Phase cue: tomato while working, green while resting. */
-.timer-panel.phase-rest .timer-display {
-  color: var(--green-deep);
-}
-
-.timer-panel.phase-work .timer-display {
-  color: var(--tomato);
-}
-
-.phase-pill[hidden] {
-  display: none;
-}
-
-.phase-pill {
-  display: inline-block;
-  margin-bottom: 0.1rem;
-  padding: 0.12rem 0.6rem;
-  border-radius: 999px;
-  font-size: 0.68rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-}
-
-.phase-pill-work {
-  background: var(--pink-fill);
-  color: var(--tomato-dark);
-}
-
-.phase-pill-rest {
-  background: var(--green-soft, #c7e8cf);
-  color: var(--green-deep);
 }
 
 .settings-check {
@@ -658,11 +653,12 @@ input[type="checkbox"] {
 .timer-buttons {
   display: flex;
   justify-content: center;
+  gap: 0.6rem;
 }
 
-#timer-btn {
-  width: 100%;
-  max-width: 260px;
+.timer-buttons button {
+  flex: 1;
+  max-width: 200px;
   padding: 0.75rem 1.1rem;
   touch-action: manipulation;
   -webkit-user-select: none;
@@ -673,44 +669,38 @@ input[type="checkbox"] {
   color: var(--ink-strong);
   border: 1px solid var(--line);
   border-radius: 11px;
-  transition: background 0.15s ease, border-color 0.15s ease, transform 0.05s ease;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease,
+    transform 0.05s ease;
 }
 
-#timer-btn:hover:not(:disabled) {
-  border-color: var(--tomato);
-  color: var(--tomato);
-}
-
-#timer-btn:active:not(:disabled) {
+.timer-buttons button:active:not(:disabled) {
   transform: translateY(1px);
 }
 
+.timer-panel .timer-buttons button {
+  border-color: color-mix(in srgb, var(--mode-color) 35%, var(--line));
+}
+
+.timer-panel .timer-buttons button:hover:not(:disabled) {
+  border-color: var(--mode-color);
+  color: var(--mode-color);
+  background: #fff;
+}
+
 #timer-btn.primary {
-  background: var(--tomato);
+  background: var(--mode-color);
   color: #fff;
   border-color: transparent;
-  box-shadow: 0 6px 16px rgba(255, 111, 97, 0.28);
+  box-shadow: 0 6px 16px color-mix(in srgb, var(--mode-color) 28%, transparent);
 }
 
 #timer-btn.primary:hover:not(:disabled) {
-  background: var(--tomato-dark);
+  background: var(--mode-color);
   color: #fff;
 }
 
 #timer-btn.primary:disabled {
-  background: var(--tomato);
-}
-
-.timer-hint {
-  margin: 0.55rem 0 0;
-  text-align: center;
-  font-size: 0.72rem;
-  letter-spacing: 0.04em;
-  color: var(--muted);
-}
-
-.timer-hint[hidden] {
-  display: none;
+  background: var(--mode-color);
 }
 
 .prompt {
@@ -724,12 +714,47 @@ input[type="checkbox"] {
 }
 
 .running-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
   background: var(--yellow-soft);
   border: 1px solid var(--yellow-line);
-  padding: 0.6rem 0.8rem;
-  border-radius: 9px;
+  padding: 0.55rem 0.8rem;
+  border-radius: 10px;
   margin-bottom: 0.8rem;
   font-size: 0.88rem;
+}
+
+.running-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--green-deep);
+  animation: running-pulse 1.6s ease-out infinite;
+}
+
+.running-name {
+  font-weight: 700;
+  color: var(--ink-strong);
+}
+
+.running-meta {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+@keyframes running-pulse {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--green-deep) 55%, transparent);
+  }
+  70% {
+    box-shadow: 0 0 0 6px transparent;
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
 }
 
 /* ---------- today log ---------- */
@@ -823,7 +848,7 @@ input[type="checkbox"] {
 }
 
 .task-item.active {
-  border-left-color: var(--tomato);
+  border-left-color: var(--tomato-dark);
 }
 
 .task-item.running {
@@ -1470,6 +1495,33 @@ button.mini-card:active {
   gap: 0.3rem;
   font-size: 0.82rem;
   color: var(--muted);
+}
+
+.settings-group {
+  grid-column: 1 / -1;
+  margin: 0.75rem 0 0;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.settings-group:first-child {
+  margin-top: 0;
+}
+
+.settings-hint {
+  font-size: 0.72rem;
+  font-weight: 400;
+  line-height: 1.35;
+  color: var(--muted);
+}
+
+/* Hints that follow a checkbox are standalone grid items — span full width. */
+.settings-form > .settings-hint {
+  grid-column: 1 / -1;
+  margin-top: -0.6rem;
 }
 
 .settings-form input,

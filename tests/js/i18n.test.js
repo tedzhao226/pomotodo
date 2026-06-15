@@ -4,12 +4,12 @@ import { describe, expect, it } from "vitest";
 describe("t", () => {
   it("returns the message for a known key", () => {
     expect(t("nav.main")).toBe(MESSAGES.en["nav.main"]);
-    expect(t("nav.main")).toBe("Main");
+    expect(t("nav.main")).toBe("Pomotodo");
   });
 
   it("substitutes interpolation variables", () => {
     expect(t("streak.toLongRest", { n: 3 })).toBe("3 to long rest");
-    expect(t("timer.shortRest", { min: 5 })).toBe("Short rest — 5 min");
+    expect(t("timer.timeForBreak")).toBe("Time for a break!");
   });
 
   it("returns the key when unknown", () => {
