@@ -434,15 +434,40 @@
   );
   await syncNow();
   await openHistory();
-  // newest A pomo is the anchor block just credited (carries the record); the
-  // B pomo is the extra credited row (no note -> shows the task name).
+  // Both tasks were checked, so the session record rides every finished pomo
+  // from this block (the anchor A and the extra B alike).
   const pomoA = state.history.pomos.find((p) => p.task_id === aId);
   const pomoB = state.history.pomos.find((p) => p.task_id === bId);
-  check("VAL-REC-005: record saved on anchor block", !!pomoA && pomoA.note === customNote);
-  check("VAL-REC-006: no-note block defaults empty", !!pomoB && pomoB.note === "");
+  check("VAL-REC-005: record saved on the anchor finished pomo", !!pomoA && pomoA.note === customNote);
+  check("VAL-REC-006: record also on the other credited pomo", !!pomoB && pomoB.note === customNote);
   const histHtml = el("#history-pomos").innerHTML;
   check("VAL-REC-005: record text rendered in History", histHtml.includes(customNote));
-  check("VAL-REC-006: task name rendered for no-note block", histHtml.includes(B));
+
+  // VAL-REC-007 (regression): start on C, switch active to A, then credit ONLY
+  // A. The record must ride the finished pomo (A), never the abandoned anchor
+  // (C), which stays incomplete and never reaches history.
+  el('.timer-tab[data-mode="pomodoro"]').click();
+  await sleep(100);
+  await start(cId); // block on C, touched {C}
+  clickRow(aId); // switch active -> A, touched {C, A}
+  await sleep(150);
+  await expire(); // modal opens, C + A checked
+  const note2 = "switched only " + sfx;
+  const recC = el("#credit-record");
+  recC.value = note2;
+  recC.dispatchEvent(new Event("input", { bubbles: true }));
+  await confirmCredit([cId]); // uncheck the anchor C -> credit only A
+  await syncNow();
+  await openHistory();
+  const withNote2 = state.history.pomos.filter((p) => p.note === note2);
+  check(
+    "VAL-REC-007: switched-only record lands on the credited finished pomo (A)",
+    withNote2.length === 1 && withNote2[0].task_id === aId,
+  );
+  check(
+    "VAL-REC-007: uncredited anchor (C) is not a finished pomo with the record",
+    !state.history.pomos.some((p) => p.task_id === cId && p.note === note2),
+  );
 
   const passed = results.filter((r) => r.ok).length;
   const failed = results.filter((r) => !r.ok);
