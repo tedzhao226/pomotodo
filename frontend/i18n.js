@@ -135,6 +135,10 @@ const MESSAGES = {
       "Clear completed todos from your list? (History is kept.)",
     "confirm.deleteTask":
       'Remove "{name}" from your todos? (History is kept.)',
+    "confirm.deletePomo":
+      "Permanently delete this pomo? This cannot be undone.",
+    "confirm.deleteTodo":
+      "Permanently delete this todo and its pomos? This cannot be undone.",
     "err.endBlock": "Couldn't end block: {msg}",
     "err.move": "Couldn't move task: {msg}",
     "err.saveOrder": "Couldn't save order: {msg}",
@@ -277,6 +281,8 @@ const MESSAGES = {
 
     "confirm.clearCompleted": "从列表清除已完成待办？（历史保留。）",
     "confirm.deleteTask": "从待办中移除「{name}」？（历史保留。）",
+    "confirm.deletePomo": "永久删除这个番茄？此操作不可撤销。",
+    "confirm.deleteTodo": "永久删除这个待办及其番茄？此操作不可撤销。",
     "err.endBlock": "无法结束番茄：{msg}",
     "err.move": "无法移动任务：{msg}",
     "err.saveOrder": "无法保存排序：{msg}",

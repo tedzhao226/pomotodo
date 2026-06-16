@@ -120,11 +120,20 @@ class Repository:
         self._session.flush()
         return True
 
-    def archive_block(self, block_id: int) -> bool:
+    def hard_delete_block(self, block_id: int) -> bool:
         block = self._session.get(Block, block_id)
         if block is None:
             return False
-        block.archived = True
+        self._session.delete(block)
+        self._session.flush()
+        return True
+
+    def hard_delete_task(self, task_id: int) -> bool:
+        # Permanent delete: removes the row, cascading to blocks + tags.
+        task = self._get(task_id)
+        if task is None:
+            return False
+        self._session.delete(task)
         self._session.flush()
         return True
 
@@ -279,8 +288,7 @@ class Repository:
             .outerjoin(
                 Block,
                 (Block.task_id == Task.id)
-                & Block.completed.is_(True)
-                & Block.archived.is_(False),
+                & Block.completed.is_(True),
             )
             .group_by(Task.id)
         ).all()
@@ -304,7 +312,6 @@ class Repository:
             .join(Block, Block.task_id == TaskTag.task_id)
             .where(
                 Block.completed.is_(True),
-                Block.archived.is_(False),
             )
             .group_by(TaskTag.tag)
             .order_by(TaskTag.tag)
@@ -318,7 +325,6 @@ class Repository:
         conditions = [
             Block.completed.is_(True),
             Block.ended_at.is_not(None),
-            Block.archived.is_(False),
         ]
         if since is not None:
             conditions.append(Block.started_at >= since)
@@ -352,7 +358,6 @@ class Repository:
                 .where(
                     Block.completed.is_(True),
                     Block.ended_at.is_not(None),
-                    Block.archived.is_(False),
                 )
                 .order_by(Block.started_at.desc(), Block.id.desc())
                 .limit(limit)
@@ -369,7 +374,6 @@ class Repository:
             .where(
                 Block.completed.is_(True),
                 Block.ended_at.is_not(None),
-                Block.archived.is_(False),
             )
         ).scalar_one()
 

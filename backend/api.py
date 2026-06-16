@@ -136,14 +136,6 @@ def end_block(
     return BlockResponse(**block)
 
 
-@router.delete("/blocks/{block_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_block(block_id: int, service: ServiceDep) -> None:
-    try:
-        service.delete_block(block_id)
-    except NotFoundError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-
-
 @router.put("/break", status_code=status.HTTP_204_NO_CONTENT)
 def set_break(body: SetBreakRequest, service: ServiceDep) -> None:
     service.set_break(body.mode, body.deadline)
@@ -193,3 +185,23 @@ def get_history(
             todos_limit=todos_limit,
         )
     )
+
+
+@router.delete(
+    "/history/pomos/{block_id}", status_code=status.HTTP_204_NO_CONTENT
+)
+def delete_history_pomo(block_id: int, service: ServiceDep) -> None:
+    try:
+        service.hard_delete_block(block_id)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.delete(
+    "/history/todos/{task_id}", status_code=status.HTTP_204_NO_CONTENT
+)
+def delete_history_todo(task_id: int, service: ServiceDep) -> None:
+    try:
+        service.hard_delete_todo(task_id)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc

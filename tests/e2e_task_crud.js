@@ -57,6 +57,18 @@
   const tid = rowId(name);
   check("add: task has a server id", Number.isInteger(tid) && tid > 0);
 
+  // ---- VAL-ICON-001: row controls use the mono glyph set, no colour emoji ----
+  const rowEl = document.querySelector(`#today-list .task-row[data-id='${tid}']`);
+  const glyph = (act) =>
+    (rowEl.querySelector(`[data-action='${act}']`) || {}).textContent?.trim();
+  check("icons: move glyph is ↓ (today→backlog)", glyph("move") === "↓");
+  check("icons: edit glyph is ✎", glyph("edit") === "✎");
+  check("icons: delete glyph is ✕", glyph("delete") === "✕");
+  check(
+    "icons: no colour emoji in row controls",
+    !/🗑|🗒/.test(rowEl.querySelector(".row-actions").textContent),
+  );
+
   // ---- activate (clicking the row selects the task) ----
   document.querySelector(`#today-list .task-row[data-id='${tid}']`).click();
   await waitFor(() => state.selectedTaskId === tid);

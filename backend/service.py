@@ -90,9 +90,13 @@ class Service:
         if not self._repo.delete_task(task_id):
             raise NotFoundError(f"Task {task_id} not found")
 
-    def delete_block(self, block_id: int) -> None:
-        if not self._repo.archive_block(block_id):
+    def hard_delete_block(self, block_id: int) -> None:
+        if not self._repo.hard_delete_block(block_id):
             raise NotFoundError(f"Block {block_id} not found")
+
+    def hard_delete_todo(self, task_id: int) -> None:
+        if not self._repo.hard_delete_task(task_id):
+            raise NotFoundError(f"Task {task_id} not found")
 
     def clear_completed_tasks(self) -> int:
         return self._repo.delete_completed_tasks()

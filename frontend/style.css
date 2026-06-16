@@ -1114,6 +1114,16 @@ input[type="checkbox"] {
   opacity: 1;
 }
 
+.log-item .row-delete,
+.history-todo .row-delete {
+  opacity: 0.35;
+}
+
+.log-item:hover .row-delete,
+.history-todo:hover .row-delete {
+  opacity: 1;
+}
+
 .row-note.active {
   opacity: 1;
   color: var(--tomato);

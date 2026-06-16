@@ -501,7 +501,7 @@
     !state.history.pomos.some((p) => p.task_id === cId && p.note === note2),
   );
 
-  // ---- VAL-DEL: soft-delete a pomo and a todo from History ----
+  // ---- VAL-DEL: permanently delete a pomo and a todo from History ----
   // Create a fresh, uniquely-noted pomo, then delete it via its History button.
   el('.timer-tab[data-mode="pomodoro"]').click();
   await sleep(100);
@@ -528,22 +528,21 @@
     await waitFor(() => !state.history.pomos.some((p) => p.id === target.id));
   }
   check(
-    "VAL-PDEL-001: soft-deleted pomo leaves History",
+    "VAL-PDEL-001: permanently deleted pomo leaves History",
     !!target && !state.history.pomos.some((p) => p.id === target.id),
   );
 
-  // Delete a (non-archived) todo from History.
+  // Permanently delete a todo from History (hard delete: the row is removed).
   const delTodoBtn = el('#history-todos [data-action="delete-todo"]');
   check("VAL-UI-001: delete-todo button present in History", !!delTodoBtn);
   if (delTodoBtn) {
     const tId = Number(delTodoBtn.dataset.id);
     delTodoBtn.click();
-    await waitFor(() => {
-      const td = state.history.todos.find((t) => t.id === tId);
-      return !!td && td.archived === true;
-    });
-    const td = state.history.todos.find((t) => t.id === tId);
-    check("VAL-UI-001: soft-deleted todo shows as deleted in History", !!td && td.archived === true);
+    await waitFor(() => !state.history.todos.some((t) => t.id === tId));
+    check(
+      "VAL-UI-001: permanently deleted todo leaves History",
+      !state.history.todos.some((t) => t.id === tId),
+    );
   }
 
   const passed = results.filter((r) => r.ok).length;

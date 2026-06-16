@@ -535,7 +535,7 @@ function rowHtml(task) {
     .join(" ");
   const toggleTitle = task.status === "active" ? t("row.markDone") : t("row.reopen");
   const moveTarget = task.bucket === "backlog" ? "today" : "backlog";
-  const moveIcon = task.bucket === "backlog" ? "↥" : "↧";
+  const moveIcon = task.bucket === "backlog" ? "↑" : "↓";
   return `
     <div class="task-row" data-action="activate" data-id="${task.id}">
       <button type="button" class="status-toggle status-${task.status}" data-action="toggle" data-id="${task.id}" data-status="${task.status}" title="${toggleTitle}">
@@ -547,12 +547,12 @@ function rowHtml(task) {
       <span class="row-actions">
         ${
           task.note && task.note.trim()
-            ? `<button type="button" class="row-note${state.expandedNoteId === task.id ? " active" : ""}" data-action="note" data-id="${task.id}" title="${t("row.showNote")}">🗒</button>`
+            ? `<button type="button" class="row-note${state.expandedNoteId === task.id ? " active" : ""}" data-action="note" data-id="${task.id}" title="${t("row.showNote")}">≡</button>`
             : ""
         }
         <button type="button" class="row-move" data-action="move" data-id="${task.id}" data-bucket="${moveTarget}" title="${task.bucket === "backlog" ? t("row.toToday") : t("row.toBacklog")}">${moveIcon}</button>
         <button type="button" class="row-edit" data-action="edit" data-id="${task.id}" title="${t("row.edit")}">✎</button>
-        <button type="button" class="row-delete" data-action="delete" data-id="${task.id}" data-name="${escapeHtml(task.name)}" title="${t("row.delete")}">🗑</button>
+        <button type="button" class="row-delete" data-action="delete" data-id="${task.id}" data-name="${escapeHtml(task.name)}" title="${t("row.delete")}">✕</button>
       </span>
     </div>`;
 }
@@ -1291,7 +1291,7 @@ function renderHistory() {
               return `<li class="log-item">
                 <span class="log-time">${hourMinute(b.ended_at || b.started_at)}<b>${hourMinute(b.started_at)}</b></span>
                 <span class="log-name">${tags} ${escapeHtml(b.note || b.task_name)} <span class="log-count">${b.duration_min}m</span></span>
-                <button type="button" class="row-delete" data-action="delete-pomo" data-id="${b.id}" title="${t("history.deletePomo")}">🗑</button>
+                <button type="button" class="row-delete" data-action="delete-pomo" data-id="${b.id}" title="${t("history.deletePomo")}">✕</button>
               </li>`;
             })
             .join("");
@@ -1324,9 +1324,7 @@ function renderHistory() {
           const tags = todo.tags
             .map((x) => `<span class="log-tag">#${escapeHtml(x)}</span>`)
             .join(" ");
-          const deleteBtn = todo.archived
-            ? ""
-            : `<button type="button" class="row-delete" data-action="delete-todo" data-id="${todo.id}" title="${t("history.deleteTodo")}">🗑</button>`;
+          const deleteBtn = `<button type="button" class="row-delete" data-action="delete-todo" data-id="${todo.id}" title="${t("history.deleteTodo")}">✕</button>`;
           return `<li class="history-todo">
             <span class="status-chip status-chip-${status}">${t(`status.${status}`)}</span>
             <span class="history-todo-name${todo.archived ? " is-deleted" : ""}">${tags} ${escapeHtml(todo.name)}</span>
@@ -1724,9 +1722,12 @@ els.views.history.addEventListener("click", async (event) => {
   }
   const action = target.dataset.action;
   if (action === "delete-pomo") {
+    if (!window.confirm(t("confirm.deletePomo"))) {
+      return;
+    }
     const id = Number(target.dataset.id);
     try {
-      await api(`/api/blocks/${id}`, { method: "DELETE" });
+      await api(`/api/history/pomos/${id}`, { method: "DELETE" });
     } catch {
       return;
     }
@@ -1735,9 +1736,12 @@ els.views.history.addEventListener("click", async (event) => {
     return;
   }
   if (action === "delete-todo") {
+    if (!window.confirm(t("confirm.deleteTodo"))) {
+      return;
+    }
     const id = Number(target.dataset.id);
     try {
-      await api(`/api/tasks/${id}`, { method: "DELETE" });
+      await api(`/api/history/todos/${id}`, { method: "DELETE" });
     } catch {
       return;
     }
