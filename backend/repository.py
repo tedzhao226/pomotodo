@@ -203,14 +203,16 @@ class Repository:
         # Close the open block and credit a completed block to each task that
         # was touched during it. The block's own task reuses the block row;
         # the rest get fresh completed rows of the same length. The free-text
-        # record belongs to the session, so it rides only on the anchor block.
+        # record describes the session, so it rides every credited (completed)
+        # pomo — never the anchor when its own task was left uncredited, since
+        # that block stays incomplete and would hide the note from history.
         block = self._session.get(Block, block_id)
         if block is None:
             return None
         now = utcnow()
         block.ended_at = now
         block.completed = block.task_id in task_ids
-        block.note = note
+        block.note = note if block.completed else ""
         extra = [tid for tid in task_ids if tid != block.task_id]
         for tid in extra:
             self._session.add(
@@ -220,6 +222,7 @@ class Repository:
                     started_at=now,
                     ended_at=now,
                     completed=True,
+                    note=note,
                 )
             )
         self._session.flush()
