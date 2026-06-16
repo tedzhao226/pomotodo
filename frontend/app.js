@@ -71,6 +71,8 @@ const els = {
   touchedChips: document.getElementById("touched-chips"),
   creditModal: document.getElementById("credit-modal"),
   creditList: document.getElementById("credit-list"),
+  creditRecord: document.getElementById("credit-record"),
+  creditRecordLabel: document.getElementById("credit-record-label"),
   creditTitle: document.getElementById("credit-title"),
   creditConfirm: document.getElementById("credit-confirm"),
   timerDisplay: document.getElementById("timer-display"),
@@ -1203,7 +1205,7 @@ function renderHistory() {
                 .join(" ");
               return `<li class="log-item">
                 <span class="log-time">${hourMinute(b.ended_at || b.started_at)}<b>${hourMinute(b.started_at)}</b></span>
-                <span class="log-name">${tags} ${escapeHtml(b.task_name)} <span class="log-count">${b.duration_min}m</span></span>
+                <span class="log-name">${tags} ${escapeHtml(b.note || b.task_name)} <span class="log-count">${b.duration_min}m</span></span>
               </li>`;
             })
             .join("");
@@ -1319,11 +1321,11 @@ async function completeBlockWithCredit() {
     return;
   }
   const lastActive = state.activeTaskId || block.task_id;
-  const checked = await openCreditModal([...state.touchedTaskIds]);
+  const { checked, note } = await openCreditModal([...state.touchedTaskIds]);
   try {
     await api(`/api/blocks/${block.id}/credit`, {
       method: "POST",
-      body: JSON.stringify({ task_ids: checked }),
+      body: JSON.stringify({ task_ids: checked, note }),
     });
   } catch (error) {
     els.timerMode.textContent = t("err.endBlock", { msg: error.message });
@@ -1348,11 +1350,15 @@ async function completeBlockWithCredit() {
 function openCreditModal(taskIds) {
   return new Promise((resolve) => {
     const tasks = state.dashboard ? state.dashboard.tasks : [];
+    const nameOf = (id) => {
+      const task = tasks.find((tk) => tk.id === id);
+      return task ? task.name : `#${id}`;
+    };
     els.creditTitle.textContent = t("credit.title");
     els.creditConfirm.textContent = t("credit.confirm");
+    els.creditRecordLabel.textContent = t("credit.record");
     els.creditList.innerHTML = "";
     taskIds.forEach((id) => {
-      const task = tasks.find((tk) => tk.id === id);
       const li = document.createElement("li");
       li.className = "credit-row";
       const label = document.createElement("label");
@@ -1361,19 +1367,42 @@ function openCreditModal(taskIds) {
       cb.checked = true;
       cb.dataset.id = String(id);
       const span = document.createElement("span");
-      span.textContent = task ? task.name : `#${id}`;
+      span.textContent = nameOf(id);
       label.append(cb, span);
       li.appendChild(label);
       els.creditList.appendChild(li);
     });
+
+    // The record seeds from the checked task names and re-seeds as boxes
+    // toggle, until the user edits it by hand (then it's theirs to keep).
+    const seed = () =>
+      [...els.creditList.querySelectorAll("input:checked")]
+        .map((cb) => nameOf(Number(cb.dataset.id)))
+        .join(" + ");
+    let dirty = false;
+    els.creditRecord.value = seed();
+    const onInput = () => {
+      dirty = true;
+    };
+    const onToggle = () => {
+      if (!dirty) {
+        els.creditRecord.value = seed();
+      }
+    };
+    els.creditRecord.addEventListener("input", onInput);
+    els.creditList.addEventListener("change", onToggle);
+
     els.creditModal.hidden = false;
     const onConfirm = () => {
       const checked = [...els.creditList.querySelectorAll("input:checked")].map(
         (cb) => Number(cb.dataset.id),
       );
+      const note = els.creditRecord.value.trim();
       els.creditModal.hidden = true;
       els.creditConfirm.removeEventListener("click", onConfirm);
-      resolve(checked);
+      els.creditRecord.removeEventListener("input", onInput);
+      els.creditList.removeEventListener("change", onToggle);
+      resolve({ checked, note });
     };
     els.creditConfirm.addEventListener("click", onConfirm);
   });

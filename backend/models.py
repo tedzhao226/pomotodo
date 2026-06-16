@@ -69,5 +69,6 @@ class Block(Base):
         DateTime(timezone=True), default=None
     )
     completed: Mapped[bool] = mapped_column(Boolean, default=False)
+    note: Mapped[str] = mapped_column(Text, default="")
 
     task: Mapped[Task] = relationship(back_populates="blocks")

@@ -197,16 +197,20 @@ class Repository:
         self._session.flush()
         return self.get_block(block_id)
 
-    def credit_block(self, block_id: int, task_ids: list[int]) -> int | None:
+    def credit_block(
+        self, block_id: int, task_ids: list[int], note: str = ""
+    ) -> int | None:
         # Close the open block and credit a completed block to each task that
         # was touched during it. The block's own task reuses the block row;
-        # the rest get fresh completed rows of the same length.
+        # the rest get fresh completed rows of the same length. The free-text
+        # record belongs to the session, so it rides only on the anchor block.
         block = self._session.get(Block, block_id)
         if block is None:
             return None
         now = utcnow()
         block.ended_at = now
         block.completed = block.task_id in task_ids
+        block.note = note
         extra = [tid for tid in task_ids if tid != block.task_id]
         for tid in extra:
             self._session.add(
@@ -298,6 +302,7 @@ class Repository:
             "task_id": block.task_id,
             "task_name": block.task.name,
             "tags": [tag.tag for tag in block.task.tags],
+            "note": block.note,
         }
 
     def get_completed_blocks_page(self, limit: int, offset: int) -> list[dict]:

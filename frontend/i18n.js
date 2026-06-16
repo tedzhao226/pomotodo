@@ -34,6 +34,7 @@ const MESSAGES = {
     "timer.removeTouched": "Remove from this block",
     "credit.title": "Block done — credit which tasks?",
     "credit.confirm": "Confirm",
+    "credit.record": "What did you work on?",
     "streak.toLongRest": "{n} to long rest",
 
     "today.title": "Today",
@@ -175,6 +176,7 @@ const MESSAGES = {
     "timer.removeTouched": "从本区块移除",
     "credit.title": "区块完成 — 记到哪些任务？",
     "credit.confirm": "确认",
+    "credit.record": "你完成了什么？",
     "streak.toLongRest": "还差 {n} 到长休息",
 
     "today.title": "今天",

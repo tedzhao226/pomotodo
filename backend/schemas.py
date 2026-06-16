@@ -50,6 +50,7 @@ class EndBlockRequest(BaseModel):
 
 class CreditBlockRequest(BaseModel):
     task_ids: list[int]
+    note: str = ""
 
 
 class BlockResponse(BaseModel):
@@ -103,6 +104,7 @@ class StatsBlock(BaseModel):
     task_id: int
     task_name: str
     tags: list[str]
+    note: str = ""
 
 
 class StatsResponse(BaseModel):

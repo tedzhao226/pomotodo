@@ -402,6 +402,48 @@
   updateTabTitle();
   check("VAL-TAB-004: idle restores default title", document.title === "Pomotodo");
 
+  // ---- VAL-REC: editable work-block record ----
+  setSettings();
+  window.confirm = () => true;
+  el('.timer-tab[data-mode="pomodoro"]').click();
+  await sleep(150);
+  await start(aId); // block on A, touched {A}
+  clickRow(bId); // switch active -> B, touched {A,B}
+  await sleep(150);
+  await expire(); // credit modal opens with A + B checked
+  const rec = el("#credit-record");
+  check("VAL-REC-001: record seeded from checked tasks", rec.value === A + " + " + B);
+
+  const boxB = [...document.querySelectorAll("#credit-list input")].find(
+    (c) => Number(c.dataset.id) === bId,
+  );
+  boxB.checked = false;
+  boxB.dispatchEvent(new Event("change", { bubbles: true }));
+  check("VAL-REC-002: re-seeds on uncheck", rec.value === A);
+
+  const customNote = "custom record " + sfx;
+  rec.value = customNote;
+  rec.dispatchEvent(new Event("input", { bubbles: true }));
+  boxB.checked = true;
+  boxB.dispatchEvent(new Event("change", { bubbles: true }));
+  check("VAL-REC-003: manual edit preserved across toggle", rec.value === customNote);
+
+  el("#credit-confirm").click();
+  await waitFor(
+    () => state.activeBlock === null && el("#credit-modal").hidden === true,
+  );
+  await syncNow();
+  await openHistory();
+  // newest A pomo is the anchor block just credited (carries the record); the
+  // B pomo is the extra credited row (no note -> shows the task name).
+  const pomoA = state.history.pomos.find((p) => p.task_id === aId);
+  const pomoB = state.history.pomos.find((p) => p.task_id === bId);
+  check("VAL-REC-005: record saved on anchor block", !!pomoA && pomoA.note === customNote);
+  check("VAL-REC-006: no-note block defaults empty", !!pomoB && pomoB.note === "");
+  const histHtml = el("#history-pomos").innerHTML;
+  check("VAL-REC-005: record text rendered in History", histHtml.includes(customNote));
+  check("VAL-REC-006: task name rendered for no-note block", histHtml.includes(B));
+
   const passed = results.filter((r) => r.ok).length;
   const failed = results.filter((r) => !r.ok);
   window.__e2e = JSON.stringify({

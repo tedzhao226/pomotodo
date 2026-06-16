@@ -142,7 +142,7 @@ def credit_block(
     service: ServiceDep,
 ) -> dict:
     try:
-        credited = service.credit_block(block_id, body.task_ids)
+        credited = service.credit_block(block_id, body.task_ids, body.note)
     except NotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return {"credited": credited}
