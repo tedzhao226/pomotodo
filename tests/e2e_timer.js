@@ -277,6 +277,131 @@
   if (state.activeBlock) await abortEsc();
   setSettings();
 
+  // ---- VAL-BRK: a running break survives a refresh ----
+  // (drives state + the load-time rehydrate path directly; no real reload.)
+  clearTimerInterval();
+  state.activeBlock = null;
+  state.timerMode = "shortBreak";
+  startCountdown(300, advanceAfterComplete); // 5:00 break -> running + deadline
+  const brkSaved = JSON.parse(localStorage.getItem("pomotodo.break") || "null");
+  check(
+    "VAL-BRK-001: running break persisted",
+    !!brkSaved && brkSaved.mode === "shortBreak" && typeof brkSaved.deadline === "number",
+  );
+
+  // simulate reload: drop live timer state, no server block, re-run rehydrate.
+  // Mimic init's idle-pomodoro render firing BEFORE the async rehydrate — it
+  // must not wipe the saved break key.
+  clearTimerInterval();
+  state.activeBlock = null;
+  state.running = false;
+  state.deadline = null;
+  state.remainingSeconds = 0;
+  state.rehydrated = false;
+  state.dashboard.running_block = null;
+  state.timerMode = "pomodoro";
+  renderTimer(); // pre-rehydrate idle render
+  check(
+    "VAL-BRK-002: break key survives pre-rehydrate render",
+    localStorage.getItem("pomotodo.break") !== null,
+  );
+  maybeRehydrateTimer();
+  await sleep(50);
+  check(
+    "VAL-BRK-002: break restored on reload",
+    state.timerMode === "shortBreak" &&
+      state.running === true &&
+      state.remainingSeconds > 0,
+  );
+
+  await switchMode("pomodoro", { auto: false });
+  check(
+    "VAL-BRK-003: break key cleared on pomodoro",
+    localStorage.getItem("pomotodo.break") === null,
+  );
+
+  // pomodoro wins over a stale saved break
+  localStorage.setItem(
+    "pomotodo.break",
+    JSON.stringify({ mode: "shortBreak", deadline: Date.now() + 300000 }),
+  );
+  clearTimerInterval();
+  state.activeBlock = null;
+  state.running = false;
+  state.timerMode = "shortBreak";
+  state.rehydrated = false;
+  state.dashboard.running_block = {
+    id: 999999,
+    task_id: aId,
+    duration_min: 30,
+    started_at: new Date().toISOString(),
+  };
+  maybeRehydrateTimer();
+  await sleep(50);
+  check(
+    "VAL-BRK-004: pomodoro wins over stale break",
+    state.timerMode === "pomodoro" && !!state.activeBlock,
+  );
+
+  // cleanup the break probe (the 999999 block is fake/server-less, so clear
+  // state directly instead of an abort that would 404)
+  clearTimerInterval();
+  state.activeBlock = null;
+  state.activeTaskId = null;
+  state.running = false;
+  state.deadline = null;
+  localStorage.removeItem("pomotodo.break");
+  state.dashboard.running_block = null;
+  setSettings();
+
+  // ---- VAL-TAB: tab title is a pure projection of timer state ----
+  // Self-contained: drives state directly (no server). The app.js classic-script
+  // globals updateTabTitle/formatTime/t/timerIsPaused are in eval scope; full
+  // pomodoro duration here is pendingDuration*60 = 1800 after setSettings().
+  state.timerMode = "pomodoro";
+  state.activeTaskId = aId;
+  state.running = true;
+  state.remainingSeconds = 1234; // 20:34
+  updateTabTitle();
+  check(
+    "VAL-TAB-001: work title = timer · Work: task",
+    document.title === formatTime(1234) + " · " + t("tab.work") + ": " + A,
+  );
+
+  const tabT1 = document.title;
+  state.remainingSeconds = 1233; // one second elapsed
+  updateTabTitle();
+  check(
+    "VAL-TAB-005: title tracks the countdown",
+    document.title !== tabT1 &&
+      document.title ===
+        formatTime(state.remainingSeconds) + " · " + t("tab.work") + ": " + A,
+  );
+
+  state.timerMode = "shortBreak";
+  state.remainingSeconds = 240; // 04:00
+  updateTabTitle();
+  check(
+    "VAL-TAB-002: rest title = timer · Rest, no task",
+    document.title === formatTime(240) + " · " + t("tab.rest") &&
+      !document.title.includes(": "),
+  );
+
+  state.timerMode = "pomodoro";
+  state.running = false;
+  state.remainingSeconds = 723; // 0 < remaining < full(1800) -> paused
+  check("VAL-TAB-003 precondition: paused", timerIsPaused() === true);
+  updateTabTitle();
+  check(
+    "VAL-TAB-003: paused title is marked and frozen",
+    document.title === "⏸ " + formatTime(723) + " · " + t("tab.work") + ": " + A,
+  );
+
+  state.running = false;
+  state.remainingSeconds = 0; // no active run -> idle
+  updateTabTitle();
+  check("VAL-TAB-004: idle restores default title", document.title === "Pomotodo");
+
   const passed = results.filter((r) => r.ok).length;
   const failed = results.filter((r) => !r.ok);
   window.__e2e = JSON.stringify({

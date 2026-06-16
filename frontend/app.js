@@ -2,6 +2,7 @@ const TIME_SCALE = 1;
 const SYNC_MS = 15000;
 
 const SETTINGS_KEY = "pomotodo.settings";
+const BREAK_KEY = "pomotodo.break";
 const DEFAULT_SETTINGS = {
   dailyGoal: 8,
   defaultDuration: 30,
@@ -277,6 +278,45 @@ function timerIsActive() {
   return state.running || timerIsPaused();
 }
 
+// Mirror the running block into the tab title: timer first (never truncated),
+// then type, then task name for work blocks. Idle restores the default.
+function updateTabTitle() {
+  if (!timerIsActive()) {
+    document.title = "Pomotodo";
+    return;
+  }
+  const time = formatTime(Math.max(state.remainingSeconds, 0));
+  const prefix = timerIsPaused() ? "⏸ " : "";
+  let label;
+  if (state.timerMode === "pomodoro") {
+    const tasks = state.dashboard ? state.dashboard.tasks : [];
+    const task = tasks.find((x) => x.id === state.activeTaskId);
+    label = t("tab.work") + (task ? `: ${task.name}` : "");
+  } else {
+    label = t("tab.rest");
+  }
+  document.title = `${prefix}${time} · ${label}`;
+}
+
+// A running break has no server record, so persist it client-side (like
+// settings) to survive a refresh. Cleared the moment the break pauses, ends, or
+// a pomodoro starts — every such transition re-renders.
+function persistBreak() {
+  // Before the first rehydrate, init renders the idle pomodoro; don't let that
+  // wipe a break saved by a prior session before maybeRehydrateTimer reads it.
+  if (!state.rehydrated) {
+    return;
+  }
+  if (state.timerMode !== "pomodoro" && state.running && state.deadline) {
+    localStorage.setItem(
+      BREAK_KEY,
+      JSON.stringify({ mode: state.timerMode, deadline: state.deadline }),
+    );
+  } else {
+    localStorage.removeItem(BREAK_KEY);
+  }
+}
+
 function renderTimer() {
   const btn = els.timerBtn;
   const tasks = state.dashboard ? state.dashboard.tasks : [];
@@ -303,6 +343,8 @@ function renderTimer() {
   }
 
   els.timerDisplay.textContent = formatTime(state.remainingSeconds);
+  updateTabTitle();
+  persistBreak();
   btn.textContent = state.running ? "⏸" : "▶";
   btn.title = state.running ? t("timer.pauseCap") : t("timer.startCap");
   btn.disabled = state.running ? false : disabled;
@@ -345,6 +387,7 @@ function runTicker() {
       playTick();
     }
     els.timerDisplay.textContent = formatTime(Math.max(state.remainingSeconds, 0));
+    updateTabTitle();
     if (state.remainingSeconds <= 0) {
       clearTimerInterval();
       state.running = false;
@@ -677,26 +720,65 @@ function maybeRehydrateTimer() {
   }
   state.rehydrated = true;
   const rb = state.dashboard && state.dashboard.running_block;
-  if (!rb || state.activeBlock) {
+  if (rb && !state.activeBlock) {
+    state.activeBlock = {
+      id: rb.id,
+      task_id: rb.task_id,
+      duration_min: rb.duration_min,
+      durationMin: rb.duration_min,
+    };
+    // Switches made before reload aren't persisted; resume with the anchor task.
+    state.activeTaskId = rb.task_id;
+    state.touchedTaskIds = new Set([rb.task_id]);
+    state.timerMode = "pomodoro";
+    state.pendingTaskId = rb.task_id;
+    state.pendingDuration = rb.duration_min;
+    state.selectedTaskId = rb.task_id;
+    const elapsedSec = (Date.now() - new Date(rb.started_at).getTime()) / 1000;
+    const remaining = Math.round(rb.duration_min * 60 - elapsedSec);
+    renderAll();
+    if (remaining <= 0) {
+      advanceAfterComplete();
+      return;
+    }
+    startCountdown(remaining, advanceAfterComplete);
     return;
   }
-  state.activeBlock = {
-    id: rb.id,
-    task_id: rb.task_id,
-    duration_min: rb.duration_min,
-    durationMin: rb.duration_min,
-  };
-  // Switches made before reload aren't persisted; resume with the anchor task.
-  state.activeTaskId = rb.task_id;
-  state.touchedTaskIds = new Set([rb.task_id]);
-  state.timerMode = "pomodoro";
-  state.pendingTaskId = rb.task_id;
-  state.pendingDuration = rb.duration_min;
-  state.selectedTaskId = rb.task_id;
-  const elapsedSec = (Date.now() - new Date(rb.started_at).getTime()) / 1000;
-  const remaining = Math.round(rb.duration_min * 60 - elapsedSec);
-  renderAll();
+  // No server block claims the timer: resume a running break left in localStorage.
+  if (!state.activeBlock) {
+    maybeRehydrateBreak();
+  }
+}
+
+// Resume a running break (short/long) persisted before a refresh. Breaks have no
+// server record; the absolute deadline lets the real elapsed reload time count.
+function maybeRehydrateBreak() {
+  const raw = localStorage.getItem(BREAK_KEY);
+  if (!raw) {
+    return;
+  }
+  let saved;
+  try {
+    saved = JSON.parse(raw);
+  } catch {
+    localStorage.removeItem(BREAK_KEY);
+    return;
+  }
+  if (
+    !saved ||
+    (saved.mode !== "shortBreak" && saved.mode !== "longBreak") ||
+    !saved.deadline
+  ) {
+    localStorage.removeItem(BREAK_KEY);
+    return;
+  }
+  state.timerMode = saved.mode;
+  state.deadline = saved.deadline;
+  const remaining = Math.round(
+    (saved.deadline - Date.now()) / (1000 / TIME_SCALE),
+  );
   if (remaining <= 0) {
+    localStorage.removeItem(BREAK_KEY);
     advanceAfterComplete();
     return;
   }
