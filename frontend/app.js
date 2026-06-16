@@ -878,6 +878,55 @@ function svgLine(values, { w = 640, h = 180, pad = 10 } = {}) {
   </svg>`;
 }
 
+// Weekday + date labels under the trend line. The line SVG stretches with
+// preserveAspectRatio="none", so labels are HTML positioned at each point's
+// fractional x. Ticks are thinned to keep ~8 labels on long ranges.
+function trendAxis(series, { w = 640, pad = 10 } = {}) {
+  if (!series.length) {
+    return "";
+  }
+  const loc = getLang() === "zh" ? "zh-CN" : "en-US";
+  const stepX = series.length > 1 ? (w - 2 * pad) / (series.length - 1) : 0;
+  const every = Math.max(1, Math.ceil(series.length / 8));
+  const last = series.length - 1;
+  const ticks = series
+    .map((d, i) => {
+      // Anchor from the end so the latest day always shows, evenly spaced.
+      if ((last - i) % every !== 0) {
+        return "";
+      }
+      const date = new Date(`${d.key}T00:00:00`);
+      const wd = date.toLocaleDateString(loc, { weekday: "short" });
+      const md = date.toLocaleDateString(loc, { month: "numeric", day: "numeric" });
+      const left = ((pad + i * stepX) / w) * 100;
+      return `<span class="trend-tick" style="left:${left.toFixed(2)}%">
+        <span class="trend-tick-wd">${wd}</span>
+        <span class="trend-tick-date">${md}</span>
+      </span>`;
+    })
+    .join("");
+  return `<div class="trend-axis">${ticks}</div>`;
+}
+
+// Narrow weekday initials under the THIS WEEK mini bars. Evenly spaced cells
+// line up with the bars; the latest day (today) is emphasized.
+function miniWeekAxis(series) {
+  if (!series.length) {
+    return "";
+  }
+  const loc = getLang() === "zh" ? "zh-CN" : "en-US";
+  const last = series.length - 1;
+  const cells = series
+    .map((d, i) => {
+      const wd = new Date(`${d.key}T00:00:00`).toLocaleDateString(loc, {
+        weekday: "narrow",
+      });
+      return `<span class="mini-week-day${i === last ? " is-today" : ""}">${wd}</span>`;
+    })
+    .join("");
+  return `<div class="mini-week-axis">${cells}</div>`;
+}
+
 function polar(cx, cy, r, angle) {
   return [cx + r * Math.cos(angle), cy + r * Math.sin(angle)];
 }
@@ -1001,7 +1050,9 @@ function renderMiniCards() {
     return;
   }
   const week = perDaySeries(state.stats.blocks, 7);
-  els.miniWeek.innerHTML = svgBars(week.map((d) => d.count));
+  els.miniWeek.innerHTML =
+    `<div class="mini-week-bars">${svgBars(week.map((d) => d.count))}</div>` +
+    miniWeekAxis(week);
   const weekTotal = week.reduce((s, d) => s + d.count, 0);
   els.miniWeekValue.textContent = weekTotal;
 
@@ -1063,9 +1114,10 @@ function renderStats() {
   els.kpiChange.classList.toggle("up", change > 0);
   els.kpiChange.classList.toggle("down", change < 0);
 
-  els.trendChart.innerHTML = svgLine(
-    perDaySeries(state.stats.blocks, days).map((d) => d.count),
-  );
+  const trendSeries = perDaySeries(state.stats.blocks, days);
+  els.trendChart.innerHTML =
+    `<div class="trend-plot">${svgLine(trendSeries.map((d) => d.count))}</div>` +
+    trendAxis(trendSeries);
 
   const tags = [...state.stats.tags]
     .sort((a, b) => b.blocks - a.blocks)

@@ -1370,6 +1370,35 @@ button.mini-card:active {
   justify-content: center;
 }
 
+#mini-week {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.mini-week-bars {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: flex-end;
+}
+
+.mini-week-axis {
+  display: flex;
+  margin-top: 3px;
+}
+
+.mini-week-day {
+  flex: 1;
+  text-align: center;
+  font-size: 0.62rem;
+  color: var(--muted);
+}
+
+.mini-week-day.is-today {
+  color: var(--accent, var(--tomato));
+  font-weight: 700;
+}
+
 .ring-svg {
   width: 50px;
   height: 50px;
@@ -1507,6 +1536,39 @@ button.mini-card:active {
 .chart-wide {
   width: 100%;
   height: 200px;
+  display: flex;
+  flex-direction: column;
+}
+
+.trend-plot {
+  flex: 1;
+  min-height: 0;
+}
+
+.trend-axis {
+  position: relative;
+  height: 30px;
+  margin-top: 4px;
+}
+
+.trend-tick {
+  position: absolute;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.trend-tick-wd {
+  font-size: 0.72rem;
+  color: var(--ink-strong);
+}
+
+.trend-tick-date {
+  font-size: 0.66rem;
+  color: var(--muted);
 }
 
 .line-svg {
