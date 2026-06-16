@@ -4,6 +4,10 @@
   box-sizing: border-box;
 }
 
+html {
+  font-size: 14px;
+}
+
 :root {
   --bg: #f3f2ef;
   --surface: #ffffff;
