@@ -2,7 +2,6 @@ const TIME_SCALE = 1;
 const SYNC_MS = 15000;
 
 const SETTINGS_KEY = "pomotodo.settings";
-const BREAK_KEY = "pomotodo.break";
 const DEFAULT_SETTINGS = {
   dailyGoal: 8,
   defaultDuration: 30,
@@ -301,21 +300,33 @@ function updateTabTitle() {
 }
 
 // A running break has no server record, so persist it client-side (like
-// settings) to survive a refresh. Cleared the moment the break pauses, ends, or
-// a pomodoro starts — every such transition re-renders.
-function persistBreak() {
-  // Before the first rehydrate, init renders the idle pomodoro; don't let that
-  // wipe a break saved by a prior session before maybeRehydrateTimer reads it.
+// A running break has no block, so its state lives in a server singleton
+// (PUT/DELETE /api/break) — that's what lets it follow the user across devices.
+// Writes are transition-diffed off lastBreakKey so a re-render/tick never spams
+// the network; reads ride the dashboard sync (see maybeRehydrateBreak).
+let lastBreakKey = "none";
+function syncBreak() {
+  // Until the first rehydrate we don't know the server's break yet; staying
+  // silent stops a pre-rehydrate idle render from DELETEing another device's
+  // running break before maybeRehydrateTimer reads it.
   if (!state.rehydrated) {
     return;
   }
-  if (state.timerMode !== "pomodoro" && state.running && state.deadline) {
-    localStorage.setItem(
-      BREAK_KEY,
-      JSON.stringify({ mode: state.timerMode, deadline: state.deadline }),
-    );
+  const desired =
+    state.timerMode !== "pomodoro" && state.running && state.deadline
+      ? `${state.timerMode}|${state.deadline}`
+      : "none";
+  if (desired === lastBreakKey) {
+    return;
+  }
+  lastBreakKey = desired;
+  if (desired === "none") {
+    api("/api/break", { method: "DELETE" }).catch(() => {});
   } else {
-    localStorage.removeItem(BREAK_KEY);
+    api("/api/break", {
+      method: "PUT",
+      body: JSON.stringify({ mode: state.timerMode, deadline: state.deadline }),
+    }).catch(() => {});
   }
 }
 
@@ -346,7 +357,7 @@ function renderTimer() {
 
   els.timerDisplay.textContent = formatTime(state.remainingSeconds);
   updateTabTitle();
-  persistBreak();
+  syncBreak();
   btn.textContent = state.running ? "⏸" : "▶";
   btn.title = state.running ? t("timer.pauseCap") : t("timer.startCap");
   btn.disabled = state.running ? false : disabled;
@@ -746,41 +757,28 @@ function maybeRehydrateTimer() {
     startCountdown(remaining, advanceAfterComplete);
     return;
   }
-  // No server block claims the timer: resume a running break left in localStorage.
+  // No server block claims the timer: resume a running break from the server.
   if (!state.activeBlock) {
     maybeRehydrateBreak();
   }
 }
 
-// Resume a running break (short/long) persisted before a refresh. Breaks have no
-// server record; the absolute deadline lets the real elapsed reload time count.
+// Resume a running break (short/long) from the server singleton, so a break
+// started on another device is picked up on open. The absolute deadline lets
+// the real elapsed time (including this load) count down correctly.
 function maybeRehydrateBreak() {
-  const raw = localStorage.getItem(BREAK_KEY);
-  if (!raw) {
-    return;
-  }
-  let saved;
-  try {
-    saved = JSON.parse(raw);
-  } catch {
-    localStorage.removeItem(BREAK_KEY);
-    return;
-  }
-  if (
-    !saved ||
-    (saved.mode !== "shortBreak" && saved.mode !== "longBreak") ||
-    !saved.deadline
-  ) {
-    localStorage.removeItem(BREAK_KEY);
+  const saved = state.dashboard && state.dashboard.break_state;
+  if (!saved) {
     return;
   }
   state.timerMode = saved.mode;
   state.deadline = saved.deadline;
+  // Already on the server — don't let the restoring re-render re-PUT it.
+  lastBreakKey = `${saved.mode}|${saved.deadline}`;
   const remaining = Math.round(
     (saved.deadline - Date.now()) / (1000 / TIME_SCALE),
   );
   if (remaining <= 0) {
-    localStorage.removeItem(BREAK_KEY);
     advanceAfterComplete();
     return;
   }
@@ -1221,6 +1219,41 @@ async function gotoTodoPage(page) {
   renderHistory();
 }
 
+async function reloadHistory() {
+  const { pomoPage, todoPage } = state.history;
+  try {
+    const data = await fetchHistory(
+      pomoPage * HISTORY_POMO_PAGE,
+      HISTORY_POMO_PAGE,
+      todoPage * HISTORY_TODO_PAGE,
+      HISTORY_TODO_PAGE,
+    );
+    state.history.pomos = data.pomos;
+    state.history.pomosTotal = data.pomos_total;
+    state.history.todos = data.todos;
+    state.history.todosTotal = data.todos_total;
+  } catch {
+    return;
+  }
+  renderHistory();
+}
+
+async function refreshStatsIfLoaded() {
+  if (!state.stats) {
+    return;
+  }
+  try {
+    state.stats = await api("/api/stats");
+    renderTodayLog();
+    renderMiniCards();
+    if (state.view === "stats") {
+      renderStats();
+    }
+  } catch {
+    // keep current stats
+  }
+}
+
 function renderPager(info, prev, next, page, total, pageSize) {
   const pages = Math.max(1, Math.ceil(total / pageSize));
   info.textContent = `${page + 1} / ${pages}`;
@@ -1258,6 +1291,7 @@ function renderHistory() {
               return `<li class="log-item">
                 <span class="log-time">${hourMinute(b.ended_at || b.started_at)}<b>${hourMinute(b.started_at)}</b></span>
                 <span class="log-name">${tags} ${escapeHtml(b.note || b.task_name)} <span class="log-count">${b.duration_min}m</span></span>
+                <button type="button" class="row-delete" data-action="delete-pomo" data-id="${b.id}" title="${t("history.deletePomo")}">🗑</button>
               </li>`;
             })
             .join("");
@@ -1290,11 +1324,15 @@ function renderHistory() {
           const tags = todo.tags
             .map((x) => `<span class="log-tag">#${escapeHtml(x)}</span>`)
             .join(" ");
+          const deleteBtn = todo.archived
+            ? ""
+            : `<button type="button" class="row-delete" data-action="delete-todo" data-id="${todo.id}" title="${t("history.deleteTodo")}">🗑</button>`;
           return `<li class="history-todo">
             <span class="status-chip status-chip-${status}">${t(`status.${status}`)}</span>
             <span class="history-todo-name${todo.archived ? " is-deleted" : ""}">${tags} ${escapeHtml(todo.name)}</span>
             <span class="history-todo-blocks">${todo.blocks_done} ${plural("block", todo.blocks_done)}</span>
             <span class="history-todo-date">${escapeHtml(dayHeading(localDayKey(new Date(todo.created_at))))}</span>
+            ${deleteBtn}
           </li>`;
         })
         .join("")
@@ -1678,6 +1716,35 @@ els.historyTodosPrev.addEventListener("click", () =>
 els.historyTodosNext.addEventListener("click", () =>
   gotoTodoPage(state.history.todoPage + 1),
 );
+
+els.views.history.addEventListener("click", async (event) => {
+  const target = event.target.closest("[data-action]");
+  if (!target) {
+    return;
+  }
+  const action = target.dataset.action;
+  if (action === "delete-pomo") {
+    const id = Number(target.dataset.id);
+    try {
+      await api(`/api/blocks/${id}`, { method: "DELETE" });
+    } catch {
+      return;
+    }
+    await reloadHistory();
+    await refreshStatsIfLoaded();
+    return;
+  }
+  if (action === "delete-todo") {
+    const id = Number(target.dataset.id);
+    try {
+      await api(`/api/tasks/${id}`, { method: "DELETE" });
+    } catch {
+      return;
+    }
+    await reloadHistory();
+    await refreshStatsIfLoaded();
+  }
+});
 
 els.clearCompletedBtn.addEventListener("click", async () => {
   if (!window.confirm(t("confirm.clearCompleted"))) {

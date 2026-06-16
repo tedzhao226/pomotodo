@@ -90,6 +90,10 @@ class Service:
         if not self._repo.delete_task(task_id):
             raise NotFoundError(f"Task {task_id} not found")
 
+    def delete_block(self, block_id: int) -> None:
+        if not self._repo.archive_block(block_id):
+            raise NotFoundError(f"Block {block_id} not found")
+
     def clear_completed_tasks(self) -> int:
         return self._repo.delete_completed_tasks()
 
@@ -155,8 +159,15 @@ class Service:
         return {
             "tasks": dashboard_tasks,
             "running_block": self._repo.get_running_block(),
+            "break_state": self._repo.get_break(),
             "tags": self._repo.get_tag_summaries(),
         }
+
+    def set_break(self, mode: str, deadline_ms: int) -> None:
+        self._repo.set_break(mode, deadline_ms)
+
+    def clear_break(self) -> None:
+        self._repo.clear_break()
 
     def get_stats(self) -> dict:
         since = datetime.now(timezone.utc) - timedelta(days=STATS_WINDOW_DAYS)

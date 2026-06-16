@@ -85,6 +85,16 @@ class RunningBlock(BaseModel):
     started_at: str
 
 
+class SetBreakRequest(BaseModel):
+    mode: Literal["shortBreak", "longBreak"]
+    deadline: int
+
+
+class BreakStateOut(BaseModel):
+    mode: str
+    deadline: int
+
+
 class TagSummary(BaseModel):
     tag: str
     total_minutes: int
@@ -94,10 +104,12 @@ class TagSummary(BaseModel):
 class DashboardResponse(BaseModel):
     tasks: list[DashboardTask]
     running_block: RunningBlock | None = None
+    break_state: BreakStateOut | None = None
     tags: list[TagSummary] = Field(default_factory=list)
 
 
 class StatsBlock(BaseModel):
+    id: int
     started_at: str
     ended_at: str | None
     duration_min: int

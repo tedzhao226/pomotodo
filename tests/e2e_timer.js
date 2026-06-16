@@ -277,54 +277,69 @@
   if (state.activeBlock) await abortEsc();
   setSettings();
 
-  // ---- VAL-BRK: a running break survives a refresh ----
-  // (drives state + the load-time rehydrate path directly; no real reload.)
+  // ---- VAL-BSYNC: a running break syncs to the server (cross-device) ----
+  const breakState = async () => (await api("/api/dashboard")).break_state;
+  const pollBreak = async (want) => {
+    for (let i = 0; i < 25; i++) {
+      const bs = await breakState();
+      if (want ? !!bs : !bs) return bs || null;
+      await sleep(80);
+    }
+    return await breakState();
+  };
+  setSettings();
+  state.rehydrated = true;
+  await switchMode("pomodoro", { auto: false }); // baseline: syncBreak -> "none"
+  await api("/api/break", { method: "DELETE" }).catch(() => {});
   clearTimerInterval();
   state.activeBlock = null;
+  // End any open server block lingering from earlier sections so the
+  // "second device" rehydrate below sees only the break, not a stale pomodoro
+  // (which would win precedence, complete, and pop a credit modal).
+  for (let i = 0; i < 5; i++) {
+    await syncNow();
+    const rb = state.dashboard && state.dashboard.running_block;
+    if (!rb) break;
+    await api(`/api/blocks/${rb.id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ completed: false }),
+    });
+  }
+  state.activeBlock = null;
+  state.rehydrated = true;
+
+  // 001: starting a break writes server break state
   state.timerMode = "shortBreak";
-  startCountdown(300, advanceAfterComplete); // 5:00 break -> running + deadline
-  const brkSaved = JSON.parse(localStorage.getItem("pomotodo.break") || "null");
+  startCountdown(300, advanceAfterComplete); // running + deadline -> syncBreak PUT
+  const bs1 = await pollBreak(true);
   check(
-    "VAL-BRK-001: running break persisted",
-    !!brkSaved && brkSaved.mode === "shortBreak" && typeof brkSaved.deadline === "number",
+    "VAL-BSYNC-001: break synced to server",
+    !!bs1 && bs1.mode === "shortBreak" && typeof bs1.deadline === "number",
   );
 
-  // simulate reload: drop live timer state, no server block, re-run rehydrate.
-  // Mimic init's idle-pomodoro render firing BEFORE the async rehydrate — it
-  // must not wipe the saved break key.
+  // 002: a second device (fresh load) resumes the break from the server
   clearTimerInterval();
   state.activeBlock = null;
   state.running = false;
   state.deadline = null;
   state.remainingSeconds = 0;
-  state.rehydrated = false;
-  state.dashboard.running_block = null;
   state.timerMode = "pomodoro";
-  renderTimer(); // pre-rehydrate idle render
-  check(
-    "VAL-BRK-002: break key survives pre-rehydrate render",
-    localStorage.getItem("pomotodo.break") !== null,
-  );
-  maybeRehydrateTimer();
+  state.rehydrated = false; // fresh load -> syncNow rehydrates from dashboard
+  await syncNow();
   await sleep(50);
   check(
-    "VAL-BRK-002: break restored on reload",
+    "VAL-BSYNC-002: second device resumes the break",
     state.timerMode === "shortBreak" &&
       state.running === true &&
       state.remainingSeconds > 0,
   );
 
-  await switchMode("pomodoro", { auto: false });
-  check(
-    "VAL-BRK-003: break key cleared on pomodoro",
-    localStorage.getItem("pomotodo.break") === null,
-  );
+  // 004: switching to a pomodoro clears the server break
+  await switchMode("pomodoro", { auto: false }); // syncBreak -> DELETE
+  const bs4 = await pollBreak(false);
+  check("VAL-BSYNC-004: pomodoro clears server break", bs4 === null);
 
-  // pomodoro wins over a stale saved break
-  localStorage.setItem(
-    "pomotodo.break",
-    JSON.stringify({ mode: "shortBreak", deadline: Date.now() + 300000 }),
-  );
+  // 003: a running pomodoro block wins over a break on rehydrate (precedence)
   clearTimerInterval();
   state.activeBlock = null;
   state.running = false;
@@ -336,22 +351,34 @@
     duration_min: 30,
     started_at: new Date().toISOString(),
   };
+  state.dashboard.break_state = {
+    mode: "shortBreak",
+    deadline: Date.now() + 300000,
+  };
   maybeRehydrateTimer();
   await sleep(50);
   check(
-    "VAL-BRK-004: pomodoro wins over stale break",
+    "VAL-BSYNC-003: pomodoro wins over break",
     state.timerMode === "pomodoro" && !!state.activeBlock,
   );
 
-  // cleanup the break probe (the 999999 block is fake/server-less, so clear
-  // state directly instead of an abort that would 404)
+  // cleanup: the 999999 block is fake/server-less, so fully reset the timer to a
+  // pristine idle state (no leftover interval/onComplete/deadline that would make
+  // the next section's block complete early).
   clearTimerInterval();
   state.activeBlock = null;
   state.activeTaskId = null;
   state.running = false;
+  state.onComplete = null;
   state.deadline = null;
-  localStorage.removeItem("pomotodo.break");
+  state.remainingSeconds = 0;
+  state.touchedTaskIds = new Set();
+  state.selectedTaskId = null;
+  state.timerMode = "pomodoro";
   state.dashboard.running_block = null;
+  state.dashboard.break_state = null;
+  state.rehydrated = true;
+  await api("/api/break", { method: "DELETE" }).catch(() => {});
   setSettings();
 
   // ---- VAL-TAB: tab title is a pure projection of timer state ----
@@ -434,12 +461,17 @@
   );
   await syncNow();
   await openHistory();
-  // Both tasks were checked, so the session record rides every finished pomo
-  // from this block (the anchor A and the extra B alike).
-  const pomoA = state.history.pomos.find((p) => p.task_id === aId);
-  const pomoB = state.history.pomos.find((p) => p.task_id === bId);
-  check("VAL-REC-005: record saved on the anchor finished pomo", !!pomoA && pomoA.note === customNote);
-  check("VAL-REC-006: record also on the other credited pomo", !!pomoB && pomoB.note === customNote);
+  // De-dup: one timer block = ONE finished pomo carrying the combined record.
+  // Both A and B were checked, but the session is attributed to the anchor A
+  // (A was credited) and B does NOT get a separate pomo row.
+  const recPomos = state.history.pomos.filter((p) => p.note === customNote);
+  check("VAL-REC-005: exactly one finished pomo carries the record", recPomos.length === 1);
+  check(
+    "VAL-DEDUP-001: no duplicate pomo — attributed to A, no separate B pomo",
+    recPomos.length === 1 &&
+      recPomos[0].task_id === aId &&
+      !state.history.pomos.some((p) => p.task_id === bId && p.note === customNote),
+  );
   const histHtml = el("#history-pomos").innerHTML;
   check("VAL-REC-005: record text rendered in History", histHtml.includes(customNote));
 
@@ -468,6 +500,51 @@
     "VAL-REC-007: uncredited anchor (C) is not a finished pomo with the record",
     !state.history.pomos.some((p) => p.task_id === cId && p.note === note2),
   );
+
+  // ---- VAL-DEL: soft-delete a pomo and a todo from History ----
+  // Create a fresh, uniquely-noted pomo, then delete it via its History button.
+  el('.timer-tab[data-mode="pomodoro"]').click();
+  await sleep(100);
+  await start(aId);
+  await sleep(120);
+  await expire();
+  const delNote = "to delete " + sfx;
+  el("#credit-record").value = delNote;
+  el("#credit-record").dispatchEvent(new Event("input", { bubbles: true }));
+  el("#credit-confirm").click();
+  await waitFor(
+    () => state.activeBlock === null && el("#credit-modal").hidden === true,
+  );
+  await syncNow();
+  await openHistory();
+  const target = state.history.pomos.find((p) => p.note === delNote);
+  check("VAL-DEL: pomo exists before delete", !!target);
+  const delPomoBtn =
+    target &&
+    el(`#history-pomos [data-action="delete-pomo"][data-id="${target.id}"]`);
+  check("VAL-UI-001: delete-pomo button present in History", !!delPomoBtn);
+  if (delPomoBtn) {
+    delPomoBtn.click();
+    await waitFor(() => !state.history.pomos.some((p) => p.id === target.id));
+  }
+  check(
+    "VAL-PDEL-001: soft-deleted pomo leaves History",
+    !!target && !state.history.pomos.some((p) => p.id === target.id),
+  );
+
+  // Delete a (non-archived) todo from History.
+  const delTodoBtn = el('#history-todos [data-action="delete-todo"]');
+  check("VAL-UI-001: delete-todo button present in History", !!delTodoBtn);
+  if (delTodoBtn) {
+    const tId = Number(delTodoBtn.dataset.id);
+    delTodoBtn.click();
+    await waitFor(() => {
+      const td = state.history.todos.find((t) => t.id === tId);
+      return !!td && td.archived === true;
+    });
+    const td = state.history.todos.find((t) => t.id === tId);
+    check("VAL-UI-001: soft-deleted todo shows as deleted in History", !!td && td.archived === true);
+  }
 
   const passed = results.filter((r) => r.ok).length;
   const failed = results.filter((r) => !r.ok);

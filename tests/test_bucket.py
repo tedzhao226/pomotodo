@@ -94,9 +94,11 @@ def test_credit_block_credits_each_checked_task(service):
     c = service.create_task_from_raw("c")
     block = service.start_block(a["id"], 30)  # block opened on A
     credited = service.credit_block(block["id"], [a["id"], b["id"]])
-    assert credited == 2
+    assert credited == 1
+    assert service.get_stats()["all_time_pomos"] == 1
+    assert len(service.get_history()["pomos"]) == 1
     assert _blocks_done(service, a["id"]) == 1  # anchor reused
-    assert _blocks_done(service, b["id"]) == 1  # extra completed block
+    assert _blocks_done(service, b["id"]) == 0  # same session, no extra block
     assert _blocks_done(service, c["id"]) == 0  # untouched
 
 
@@ -123,9 +125,11 @@ def test_credit_block_dedupes_task_ids(service):
     block = service.start_block(a["id"], 30)
     # Duplicate ids must not double-credit a task.
     credited = service.credit_block(block["id"], [a["id"], a["id"], b["id"], b["id"]])
-    assert credited == 2
+    assert credited == 1
+    assert service.get_stats()["all_time_pomos"] == 1
+    assert len(service.get_history()["pomos"]) == 1
     assert _blocks_done(service, a["id"]) == 1
-    assert _blocks_done(service, b["id"]) == 1
+    assert _blocks_done(service, b["id"]) == 0
 
 
 def test_credit_block_unknown_block_raises(service):

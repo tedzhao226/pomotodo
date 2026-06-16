@@ -9,6 +9,8 @@ const MESSAGES = {
 
     "history.pomos": "Pomos",
     "history.todos": "Todos",
+    "history.deletePomo": "Delete pomo",
+    "history.deleteTodo": "Delete todo",
     "status.active": "Active",
     "status.done": "Done",
     "status.deleted": "Deleted",
@@ -151,6 +153,8 @@ const MESSAGES = {
 
     "history.pomos": "番茄",
     "history.todos": "待办",
+    "history.deletePomo": "删除番茄",
+    "history.deleteTodo": "删除待办",
     "status.active": "进行中",
     "status.done": "已完成",
     "status.deleted": "已删除",

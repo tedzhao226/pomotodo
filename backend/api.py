@@ -17,6 +17,7 @@ from backend.schemas import (
     EndBlockRequest,
     HistoryResponse,
     ReorderRequest,
+    SetBreakRequest,
     StatsResponse,
     TaskResponse,
     UpdateTaskRequest,
@@ -133,6 +134,24 @@ def end_block(
     except NotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return BlockResponse(**block)
+
+
+@router.delete("/blocks/{block_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_block(block_id: int, service: ServiceDep) -> None:
+    try:
+        service.delete_block(block_id)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.put("/break", status_code=status.HTTP_204_NO_CONTENT)
+def set_break(body: SetBreakRequest, service: ServiceDep) -> None:
+    service.set_break(body.mode, body.deadline)
+
+
+@router.delete("/break", status_code=status.HTTP_204_NO_CONTENT)
+def clear_break(service: ServiceDep) -> None:
+    service.clear_break()
 
 
 @router.post("/blocks/{block_id}/credit")

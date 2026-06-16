@@ -48,13 +48,53 @@ def test_credit_note_lands_on_finished_pomo_when_anchor_uncredited(service):
 
 
 def test_credit_note_on_every_credited_pomo(service):
-    # Crediting several touched tasks produces one finished pomo each; the
-    # session record shows on all of them.
     a = service.create_task_from_raw("task A")
     b = service.create_task_from_raw("task B")
     block = service.start_block(a["id"], 25)
     service.credit_block(block["id"], [a["id"], b["id"]], "A + B")
 
     pomos = service.get_history()["pomos"]
-    assert {p["task_name"] for p in pomos} == {"task A", "task B"}
-    assert all(p["note"] == "A + B" for p in pomos)
+    assert len(pomos) == 1
+    assert pomos[0]["task_name"] == "task A"
+    assert pomos[0]["note"] == "A + B"
+
+
+def test_credit_block_dedup_records_one_pomo_with_note(service):
+    a = service.create_task_from_raw("task A")
+    b = service.create_task_from_raw("task B")
+    block = service.start_block(a["id"], 25)
+
+    credited = service.credit_block(block["id"], [a["id"], b["id"]], "A + B")
+
+    pomos = service.get_history()["pomos"]
+    assert credited == 1
+    assert len(pomos) == 1
+    assert service.get_stats()["all_time_pomos"] == 1
+    assert pomos[0]["task_name"] == "task A"
+    assert pomos[0]["note"] == "A + B"
+
+
+def test_credit_block_attribution_repoints_to_first_checked_task(service):
+    a = service.create_task_from_raw("task A")
+    b = service.create_task_from_raw("task B")
+    block = service.start_block(a["id"], 25)
+
+    service.credit_block(block["id"], [b["id"]], "B only")
+
+    pomos = service.get_history()["pomos"]
+    assert len(pomos) == 1
+    assert pomos[0]["task_id"] == b["id"]
+    assert pomos[0]["task_name"] == "task B"
+    assert "task A" not in {p["task_name"] for p in pomos}
+
+
+def test_credit_block_count_counts_real_sessions(service):
+    a = service.create_task_from_raw("task A")
+    b = service.create_task_from_raw("task B")
+    first = service.start_block(a["id"], 25)
+    second = service.start_block(b["id"], 25)
+
+    service.credit_block(first["id"], [a["id"], b["id"]], "A + B")
+    service.credit_block(second["id"], [b["id"]], "B")
+
+    assert service.get_stats()["all_time_pomos"] == 2

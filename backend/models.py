@@ -1,6 +1,14 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+)
 from sqlalchemy.orm import (
     DeclarativeBase,
     Mapped,
@@ -69,6 +77,17 @@ class Block(Base):
         DateTime(timezone=True), default=None
     )
     completed: Mapped[bool] = mapped_column(Boolean, default=False)
+    archived: Mapped[bool] = mapped_column(Boolean, default=False)
     note: Mapped[str] = mapped_column(Text, default="")
 
     task: Mapped[Task] = relationship(back_populates="blocks")
+
+
+class BreakState(Base):
+    # Singleton (id == 1): the running break, mirroring the client's
+    # {mode, deadline} so a break follows the user across devices. No task.
+    __tablename__ = "break_state"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    mode: Mapped[str] = mapped_column(String(16))
+    deadline_ms: Mapped[int] = mapped_column(BigInteger)

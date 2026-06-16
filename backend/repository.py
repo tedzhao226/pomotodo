@@ -3,7 +3,7 @@ from datetime import datetime
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from backend.models import Block, Task, TaskTag, utcnow
+from backend.models import Block, BreakState, Task, TaskTag, utcnow
 
 
 def _iso(value: datetime | None) -> str | None:
@@ -120,6 +120,14 @@ class Repository:
         self._session.flush()
         return True
 
+    def archive_block(self, block_id: int) -> bool:
+        block = self._session.get(Block, block_id)
+        if block is None:
+            return False
+        block.archived = True
+        self._session.flush()
+        return True
+
     def delete_completed_tasks(self) -> int:
         tasks = (
             self._session.execute(
@@ -200,33 +208,17 @@ class Repository:
     def credit_block(
         self, block_id: int, task_ids: list[int], note: str = ""
     ) -> int | None:
-        # Close the open block and credit a completed block to each task that
-        # was touched during it. The block's own task reuses the block row;
-        # the rest get fresh completed rows of the same length. The free-text
-        # record describes the session, so it rides every credited (completed)
-        # pomo — never the anchor when its own task was left uncredited, since
-        # that block stays incomplete and would hide the note from history.
         block = self._session.get(Block, block_id)
         if block is None:
             return None
         now = utcnow()
         block.ended_at = now
-        block.completed = block.task_id in task_ids
-        block.note = note if block.completed else ""
-        extra = [tid for tid in task_ids if tid != block.task_id]
-        for tid in extra:
-            self._session.add(
-                Block(
-                    task_id=tid,
-                    duration_min=block.duration_min,
-                    started_at=now,
-                    ended_at=now,
-                    completed=True,
-                    note=note,
-                )
-            )
+        block.completed = True
+        block.note = note
+        if task_ids and block.task_id not in task_ids:
+            block.task_id = task_ids[0]
         self._session.flush()
-        return (1 if block.completed else 0) + len(extra)
+        return 1
 
     def get_running_block(self) -> dict | None:
         block = self._session.execute(
@@ -245,17 +237,52 @@ class Repository:
             "started_at": _iso(block.started_at),
         }
 
+    # ---- break state (singleton row id=1: the running break, no task) ----
+
+    def set_break(self, mode: str, deadline_ms: int) -> None:
+        row = self._session.get(BreakState, 1)
+        if row is None:
+            self._session.add(
+                BreakState(id=1, mode=mode, deadline_ms=deadline_ms)
+            )
+        else:
+            row.mode = mode
+            row.deadline_ms = deadline_ms
+        self._session.flush()
+
+    def clear_break(self) -> None:
+        row = self._session.get(BreakState, 1)
+        if row is not None:
+            self._session.delete(row)
+            self._session.flush()
+
+    def get_break(self) -> dict | None:
+        row = self._session.get(BreakState, 1)
+        if row is None:
+            return None
+        # Lazy-expire: a break whose deadline has passed is no longer running.
+        if row.deadline_ms <= int(utcnow().timestamp() * 1000):
+            self._session.delete(row)
+            self._session.flush()
+            return None
+        return {"mode": row.mode, "deadline": row.deadline_ms}
+
     def get_task_block_stats(self) -> dict[int, dict]:
         rows = self._session.execute(
             select(
-                Block.task_id,
+                Task.id,
                 func.count(Block.id),
                 func.coalesce(func.sum(Block.duration_min), 0),
                 func.min(Block.started_at),
                 func.max(Block.ended_at),
             )
-            .where(Block.completed.is_(True))
-            .group_by(Block.task_id)
+            .outerjoin(
+                Block,
+                (Block.task_id == Task.id)
+                & Block.completed.is_(True)
+                & Block.archived.is_(False),
+            )
+            .group_by(Task.id)
         ).all()
         return {
             row[0]: {
@@ -275,7 +302,10 @@ class Repository:
                 func.coalesce(func.sum(Block.duration_min), 0),
             )
             .join(Block, Block.task_id == TaskTag.task_id)
-            .where(Block.completed.is_(True))
+            .where(
+                Block.completed.is_(True),
+                Block.archived.is_(False),
+            )
             .group_by(TaskTag.tag)
             .order_by(TaskTag.tag)
         ).all()
@@ -285,12 +315,18 @@ class Repository:
         ]
 
     def get_completed_blocks(self, since: datetime | None = None) -> list[dict]:
-        conditions = [Block.completed.is_(True), Block.ended_at.is_not(None)]
+        conditions = [
+            Block.completed.is_(True),
+            Block.ended_at.is_not(None),
+            Block.archived.is_(False),
+        ]
         if since is not None:
             conditions.append(Block.started_at >= since)
         blocks = (
             self._session.execute(
-                select(Block).where(*conditions).order_by(Block.started_at)
+                select(Block)
+                .where(*conditions)
+                .order_by(Block.started_at)
             )
             .scalars()
             .all()
@@ -299,6 +335,7 @@ class Repository:
 
     def _block_to_dict(self, block: Block) -> dict:
         return {
+            "id": block.id,
             "started_at": _iso(block.started_at),
             "ended_at": _iso(block.ended_at),
             "duration_min": block.duration_min,
@@ -312,7 +349,11 @@ class Repository:
         blocks = (
             self._session.execute(
                 select(Block)
-                .where(Block.completed.is_(True), Block.ended_at.is_not(None))
+                .where(
+                    Block.completed.is_(True),
+                    Block.ended_at.is_not(None),
+                    Block.archived.is_(False),
+                )
                 .order_by(Block.started_at.desc(), Block.id.desc())
                 .limit(limit)
                 .offset(offset)
@@ -324,8 +365,11 @@ class Repository:
 
     def count_completed_blocks(self) -> int:
         return self._session.execute(
-            select(func.count(Block.id)).where(
-                Block.completed.is_(True), Block.ended_at.is_not(None)
+            select(func.count(Block.id))
+            .where(
+                Block.completed.is_(True),
+                Block.ended_at.is_not(None),
+                Block.archived.is_(False),
             )
         ).scalar_one()
 
