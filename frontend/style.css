@@ -11,10 +11,19 @@ html {
 :root {
   --bg: #f3f2ef;
   --surface: #ffffff;
-  --ink: #6b6b6b;
-  --ink-strong: #4a4a4a;
-  --muted: #b0aeaa;
+  --ink: #33302b;
+  --ink-strong: #1f2a22;
+  --muted: #6f6a62;
   --line: #ececea;
+  /* Type scale (relative to the deliberate 14px root, commit f695c9d). */
+  --fs-xs: 0.78rem;
+  --fs-sm: 0.86rem;
+  --fs-base: 1rem;
+  --fs-md: 1.18rem;
+  --fs-lg: 1.5rem;
+  --fw-normal: 400;
+  --fw-medium: 500;
+  --fw-semibold: 600;
   --tomato: #ff6f61;
   --tomato-dark: #f0594b;
   --pink: #f4978e;
@@ -1020,17 +1029,18 @@ input[type="checkbox"] {
 }
 
 .tag-chip {
-  background: transparent;
-  color: var(--blue);
-  padding: 0.1rem 0.2rem;
+  background: #eef4fb;
+  color: #2f6aa3;
+  padding: 0.1rem 0.45rem;
+  border-radius: 6px;
   font-size: 0.82rem;
-  font-weight: 700;
+  font-weight: 600;
   white-space: nowrap;
 }
 
 .tag-chip:hover:not(:disabled) {
-  background: transparent;
-  color: var(--tomato);
+  background: #fbe7e3;
+  color: var(--tomato-dark);
 }
 
 .block-badge {
@@ -1567,7 +1577,7 @@ button.mini-card:active {
 
 .chart-wide {
   width: 100%;
-  height: 200px;
+  height: 168px;
   display: flex;
   flex-direction: column;
 }
