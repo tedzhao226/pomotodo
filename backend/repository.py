@@ -79,10 +79,12 @@ class Repository:
         task = self._get(task_id)
         if task is None:
             return None
-        # A bucket change re-homes the task at the end of the target bucket so it
-        # doesn't collide with an existing sort_order.
-        if "bucket" in fields and fields["bucket"] != task.bucket:
-            task.sort_order = self._next_sort_order(fields["bucket"])
+        target_bucket = fields.get("bucket", task.bucket)
+        bucket_changed = "bucket" in fields and fields["bucket"] != task.bucket
+        # Finishing a task sinks it below the still-active tasks in its bucket.
+        finishing = fields.get("status") == "done" and task.status != "done"
+        if bucket_changed or finishing:
+            task.sort_order = self._next_sort_order(target_bucket)
         for column, value in fields.items():
             setattr(task, column, value)
         self._session.flush()
@@ -181,7 +183,7 @@ class Repository:
             )
         return result
 
-    def create_block(self, task_id: int, duration_min: int) -> dict:
+    def create_block(self, task_id: int | None, duration_min: int) -> dict:
         block = Block(task_id=task_id, duration_min=duration_min)
         self._session.add(block)
         self._session.flush()
@@ -214,6 +216,14 @@ class Repository:
         self._session.flush()
         return self.get_block(block_id)
 
+    def assign_block_task(self, block_id: int, task_id: int) -> dict | None:
+        block = self._session.get(Block, block_id)
+        if block is None or block.ended_at is not None:
+            return None
+        block.task_id = task_id
+        self._session.flush()
+        return self.get_block(block_id)
+
     def credit_block(
         self, block_id: int, task_ids: list[int], note: str = ""
     ) -> int | None:
@@ -238,10 +248,11 @@ class Repository:
         ).scalar_one_or_none()
         if block is None:
             return None
+        task_name = block.task.name if block.task_id is not None else ""
         return {
             "id": block.id,
             "task_id": block.task_id,
-            "task_name": block.task.name,
+            "task_name": task_name,
             "duration_min": block.duration_min,
             "started_at": _iso(block.started_at),
         }
@@ -340,14 +351,20 @@ class Repository:
         return [self._block_to_dict(block) for block in blocks]
 
     def _block_to_dict(self, block: Block) -> dict:
+        if block.task_id is None:
+            task_name = ""
+            tags: list[str] = []
+        else:
+            task_name = block.task.name
+            tags = [tag.tag for tag in block.task.tags]
         return {
             "id": block.id,
             "started_at": _iso(block.started_at),
             "ended_at": _iso(block.ended_at),
             "duration_min": block.duration_min,
             "task_id": block.task_id,
-            "task_name": block.task.name,
-            "tags": [tag.tag for tag in block.task.tags],
+            "task_name": task_name,
+            "tags": tags,
             "note": block.note,
         }
 

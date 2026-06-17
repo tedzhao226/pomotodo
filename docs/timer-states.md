@@ -28,8 +28,18 @@ A work block is **idle** (no block), **running** (`activeBlock` +
 block and no task — it is just **idle** or **running**.
 
 When idle, click a task to select it and click the same task again to
-**deselect**. No task is auto-selected; START is disabled until one is
-picked (and the timer shows the full duration with "No task selected").
+**deselect**. No task is auto-selected; START is enabled even without a selection
+(and the timer shows the full duration with "No task selected"). A taskless
+start creates a block with no anchor task; on completion the credit modal
+lists Today tasks to pick from.
+
+While a **taskless** block runs (no active task yet), clicking a task simply
+**assigns** it to the current block — no confirm, since nothing is being
+replaced. The assignment is **persisted** server-side (`POST
+/api/blocks/{id}/assign` sets `task_id`), so a page refresh rehydrates the
+block with that task. Once a block has an active task, clicking a different
+task is a **switch** and asks to confirm; switches stay client-only and do
+**not** survive a reload. Either way the task joins `touchedTaskIds`.
 
 ## Work-block state machine
 
@@ -44,11 +54,12 @@ stateDiagram-v2
     state "Rest" as Rest
 
     Idle --> Idle: Select / deselect a task<br/>(click row, click again to clear)
-    Idle --> Running: Start with a task<br/>touched = {task}
+    Idle --> Running: Start (optionally with a task)<br/>touched = {task} or {}
     Running --> Paused: Pause
     Paused --> Running: Resume
 
-    Running --> Running: Switch task<br/>activeTask changes, add to touched<br/>timer continues
+    Running --> Running: Assign task (taskless block)<br/>activeTask set, add to touched<br/>no confirm, timer continues
+    Running --> Running: Switch task<br/>activeTask changes (confirm), add to touched<br/>timer continues
     Running --> Running: Restart<br/>reset countdown to full, same block
 
     Running --> Credit: complete (timer hits 0)
@@ -98,7 +109,9 @@ Key rules:
   block never grant blocks; they only build the touched set.
 - **Completion checklist.** On a natural finish you pick which touched
   tasks to credit (default: all). Each checked task earns one completed
-  block; the streak bumps once for the block (not per task).
+  block; the streak bumps once for the block (not per task). For a block
+  **started taskless**, the checklist instead lists Today tasks; any you
+  touched mid-block are pre-checked.
 - **Abort earns nothing.** Skip, Esc, or any abort before the timer ends
   discards the touched set.
 - **Restart** re-runs the same block from its full duration without
@@ -107,8 +120,11 @@ Key rules:
 ## UI signals
 
 - **Idle selection** — click a task to select (row highlighted, shown as
-  the timer task); click it again to deselect. START is disabled with no
-  selection.
+  the timer task); click it again to deselect. START stays enabled with no
+  selection (taskless start, label "No task selected").
+- **Mid-block assign/switch** — clicking a task during a running block sets it
+  active. A taskless block assigns silently; a block with an active task
+  confirms the switch.
 - **Active-task pill** next to the timer shows `activeTaskId`.
 - **"This block" chips** under the timer list `touchedTaskIds` — a live
   preview of what the completion checklist will offer. Each non-active chip
@@ -141,3 +157,9 @@ Unchanged in `backend/repository.py`:
 - Fixed first-load timer: a paused timer now requires time left, so the
   idle clock initializes to the full duration and the first START begins a
   block instead of "resuming".
+
+## Pin to top
+
+Each task row has a **pin** button (↑) that moves the task to the top of its
+bucket (Today or Backlog). Pin uses the same server order as drag-reorder;
+it is disabled while a tag filter is active.

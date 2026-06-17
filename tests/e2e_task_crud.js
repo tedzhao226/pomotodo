@@ -108,6 +108,32 @@
   await waitFor(() => !inToday(newName));
   check("delete: task removed from Today", inToday(newName) === false);
 
+  // ---- sink: done task moves to bottom of Today ----
+  const sa = "SA" + Date.now().toString().slice(-5);
+  const sb = "SB" + Date.now().toString().slice(-5);
+  input.value = sa;
+  input.closest("form").requestSubmit();
+  await waitFor(() => inToday(sa));
+  input.value = sb;
+  input.closest("form").requestSubmit();
+  await waitFor(() => inToday(sb));
+  const saId = rowId(sa);
+  const orderIds = () =>
+    [...document.querySelectorAll("#today-list .task-row")].map((r) =>
+      Number(r.dataset.id),
+    );
+  action(saId, "toggle");
+  await waitFor(() => statusOf(saId) === "done");
+  await waitFor(() => orderIds()[orderIds().length - 1] === saId);
+  check(
+    "sink: done task moves to bottom of Today",
+    orderIds()[orderIds().length - 1] === saId,
+  );
+  action(saId, "delete");
+  await waitFor(() => !inToday(sa));
+  action(rowId(sb), "delete");
+  await waitFor(() => !inToday(sb));
+
   const passed = results.filter((r) => r.ok).length;
   const failed = results.filter((r) => !r.ok);
   window.__e2e = JSON.stringify({

@@ -37,6 +37,7 @@ const MESSAGES = {
     "credit.title": "Block done — credit which tasks?",
     "credit.confirm": "Confirm",
     "credit.record": "What did you work on?",
+    "credit.titleUntethered": "Block done — what did you finish?",
     "streak.toLongRest": "{n} to long rest",
 
     "today.title": "Today",
@@ -125,6 +126,7 @@ const MESSAGES = {
 
     "row.toBacklog": "→ Backlog",
     "row.toToday": "→ Today",
+    "row.pin": "Pin to top",
     "row.markDone": "Mark done",
     "row.reopen": "Reopen",
     "row.edit": "Edit",
@@ -181,10 +183,11 @@ const MESSAGES = {
     "timer.restart": "重新开始",
     "timer.confirmDiscard": "放弃这个番茄钟？当前进度不会计入统计。",
     "timer.confirmSwitch": "切换当前任务到 {name}？",
-    "timer.removeTouched": "从本区块移除",
-    "credit.title": "区块完成 — 记到哪些任务？",
+    "timer.removeTouched": "从本番茄移除",
+    "credit.title": "番茄完成 — 记到哪些任务？",
     "credit.confirm": "确认",
     "credit.record": "你完成了什么？",
+    "credit.titleUntethered": "番茄完成 — 你完成了什么？",
     "streak.toLongRest": "还差 {n} 到长休息",
 
     "today.title": "今天",
@@ -273,6 +276,7 @@ const MESSAGES = {
 
     "row.toBacklog": "→ 待办池",
     "row.toToday": "→ 今天",
+    "row.pin": "置顶",
     "row.markDone": "标记完成",
     "row.reopen": "重新打开",
     "row.edit": "编辑",

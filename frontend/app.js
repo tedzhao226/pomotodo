@@ -42,6 +42,7 @@ const state = {
   streakBlocks: 0,
   pendingTaskId: null,
   pendingDuration: 30,
+  pendingTaskless: false,
   selectedTag: null,
   selectedTaskId: null,
   dashboard: null,
@@ -332,13 +333,7 @@ function syncBreak() {
 
 function renderTimer() {
   const btn = els.timerBtn;
-  const tasks = state.dashboard ? state.dashboard.tasks : [];
-  const selected = tasks.find((task) => task.id === state.selectedTaskId);
-  const disabled =
-    state.timerMode === "pomodoro" &&
-    !state.running &&
-    !timerIsPaused() &&
-    !selected;
+  const disabled = false;
 
   els.timerPanel.classList.toggle("mode-pomodoro", state.timerMode === "pomodoro");
   els.timerPanel.classList.toggle("mode-shortBreak", state.timerMode === "shortBreak");
@@ -525,7 +520,7 @@ function formatDateTime(iso) {
   });
 }
 
-function rowHtml(task) {
+function rowHtml(task, { pinEnabled = true, isFirst = false } = {}) {
   const estimate = task.estimate_blocks != null ? task.estimate_blocks : "—";
   const tags = task.tags
     .map(
@@ -548,6 +543,11 @@ function rowHtml(task) {
         ${
           task.note && task.note.trim()
             ? `<button type="button" class="row-note${state.expandedNoteId === task.id ? " active" : ""}" data-action="note" data-id="${task.id}" title="${t("row.showNote")}">≡</button>`
+            : ""
+        }
+        ${
+          pinEnabled && !isFirst
+            ? `<button type="button" class="row-pin" data-action="pin" data-id="${task.id}" title="${t("row.pin")}">📌</button>`
             : ""
         }
         <button type="button" class="row-move" data-action="move" data-id="${task.id}" data-bucket="${moveTarget}" title="${task.bucket === "backlog" ? t("row.toToday") : t("row.toBacklog")}">${moveIcon}</button>
@@ -587,6 +587,10 @@ function editorHtml(task) {
 
 // Order is owned by the server (tasks.sort_order, per bucket). Sort the buffered
 // tasks of one bucket by it, tie-breaking on id for stability.
+function todayCreditCandidates() {
+  return tasksInBucket("today").filter((task) => task.status !== "done");
+}
+
 function tasksInBucket(bucket) {
   return state.dashboard.tasks
     .filter((task) =>
@@ -595,7 +599,7 @@ function tasksInBucket(bucket) {
     .sort((a, b) => a.sort_order - b.sort_order || a.id - b.id);
 }
 
-function taskItem(task, draggable) {
+function taskItem(task, draggable, { pinEnabled = true, isFirst = false } = {}) {
   const li = document.createElement("li");
   li.className = "task-item";
   li.dataset.id = task.id;
@@ -612,11 +616,13 @@ function taskItem(task, draggable) {
     li.classList.add("is-done");
   }
   li.innerHTML =
-    state.editingTaskId === task.id ? editorHtml(task) : rowHtml(task);
+    state.editingTaskId === task.id
+      ? editorHtml(task)
+      : rowHtml(task, { pinEnabled, isFirst });
   return li;
 }
 
-function fillBucket(listEl, tasks, draggable) {
+function fillBucket(listEl, tasks, draggable, { pinEnabled = true } = {}) {
   listEl.innerHTML = "";
   if (!tasks.length) {
     const li = document.createElement("li");
@@ -625,8 +631,11 @@ function fillBucket(listEl, tasks, draggable) {
     listEl.appendChild(li);
     return;
   }
-  for (const task of tasks) {
-    listEl.appendChild(taskItem(task, draggable));
+  for (let index = 0; index < tasks.length; index++) {
+    const task = tasks[index];
+    listEl.appendChild(
+      taskItem(task, draggable, { pinEnabled, isFirst: index === 0 }),
+    );
     if (
       state.expandedNoteId === task.id &&
       task.note &&
@@ -686,8 +695,12 @@ function renderTaskList() {
       `<span class="fi-x">✕</span>`;
   }
 
-  fillBucket(els.todayList, todayTasks.filter(matches), canDrag);
-  fillBucket(els.backlogList, backlogTasks.filter(matches), false);
+  fillBucket(els.todayList, todayTasks.filter(matches), canDrag, {
+    pinEnabled: canDrag,
+  });
+  fillBucket(els.backlogList, backlogTasks.filter(matches), false, {
+    pinEnabled: !state.selectedTag && state.editingTaskId === null,
+  });
 }
 
 function renderDashboard() {
@@ -710,19 +723,31 @@ function renderAll() {
 
 let syncTimer = null;
 
-// Reconcile the buffer with the backend (single combined fetch), then render.
+// Reconcile the buffer with the backend, then render. The two fetches are
+// independent: a failure of one (e.g. /api/stats 5xx) must not discard the
+// other, so the core UI (tasks + timer) stays live even if stats is broken.
+// Failures are logged rather than swallowed so a persistent 5xx is visible.
 async function syncNow() {
-  try {
-    const [dashboard, stats] = await Promise.all([
-      api("/api/dashboard"),
-      api("/api/stats"),
-    ]);
-    state.dashboard = dashboard;
-    state.stats = stats;
-    renderAll();
+  const [dashboard, stats] = await Promise.allSettled([
+    api("/api/dashboard"),
+    api("/api/stats"),
+  ]);
+  if (dashboard.status === "fulfilled") {
+    state.dashboard = dashboard.value;
+  } else {
+    console.warn("syncNow: dashboard fetch failed", dashboard.reason);
+  }
+  if (stats.status === "fulfilled") {
+    state.stats = stats.value;
+  } else {
+    console.warn("syncNow: stats fetch failed", stats.reason);
+  }
+  renderAll();
+  // Rehydrate only on a good dashboard: maybeRehydrateTimer latches
+  // state.rehydrated on its first call, so running it without dashboard data
+  // would permanently skip resuming a running block.
+  if (dashboard.status === "fulfilled") {
     maybeRehydrateTimer();
-  } catch {
-    // Keep the current buffer; the next scheduled sync retries.
   }
 }
 
@@ -740,13 +765,22 @@ function maybeRehydrateTimer() {
       duration_min: rb.duration_min,
       durationMin: rb.duration_min,
     };
-    // Switches made before reload aren't persisted; resume with the anchor task.
-    state.activeTaskId = rb.task_id;
-    state.touchedTaskIds = new Set([rb.task_id]);
     state.timerMode = "pomodoro";
-    state.pendingTaskId = rb.task_id;
     state.pendingDuration = rb.duration_min;
-    state.selectedTaskId = rb.task_id;
+    if (rb.task_id == null) {
+      state.activeTaskId = null;
+      state.touchedTaskIds = new Set();
+      state.pendingTaskId = null;
+      state.pendingTaskless = true;
+      state.selectedTaskId = null;
+    } else {
+      // Switches made before reload aren't persisted; resume with the anchor task.
+      state.activeTaskId = rb.task_id;
+      state.touchedTaskIds = new Set([rb.task_id]);
+      state.pendingTaskId = rb.task_id;
+      state.pendingTaskless = false;
+      state.selectedTaskId = rb.task_id;
+    }
     const elapsedSec = (Date.now() - new Date(rb.started_at).getTime()) / 1000;
     const remaining = Math.round(rb.duration_min * 60 - elapsedSec);
     renderAll();
@@ -1349,18 +1383,33 @@ function renderHistory() {
 /* ---------- block lifecycle ---------- */
 
 async function startBlock(taskId, durationMin) {
-  const block = await api(`/api/tasks/${taskId}/blocks`, {
-    method: "POST",
-    body: JSON.stringify({ duration_min: durationMin }),
-  });
+  const block =
+    taskId == null
+      ? await api("/api/blocks", {
+          method: "POST",
+          body: JSON.stringify({ duration_min: durationMin }),
+        })
+      : await api(`/api/tasks/${taskId}/blocks`, {
+          method: "POST",
+          body: JSON.stringify({ duration_min: durationMin }),
+        });
   state.activeBlock = {
     ...block,
     durationMin,
   };
-  state.activeTaskId = taskId;
-  state.touchedTaskIds = new Set([taskId]);
+  if (taskId == null) {
+    state.activeTaskId = null;
+    state.touchedTaskIds = new Set();
+    state.pendingTaskId = null;
+    state.pendingTaskless = true;
+    state.selectedTaskId = null;
+  } else {
+    state.activeTaskId = taskId;
+    state.touchedTaskIds = new Set([taskId]);
+    state.pendingTaskId = taskId;
+    state.pendingTaskless = false;
+  }
   state.timerMode = "pomodoro";
-  state.pendingTaskId = taskId;
   state.pendingDuration = durationMin;
   startCountdown(durationMin * 60, advanceAfterComplete);
   renderTaskList(); // reflect the active-row highlight immediately
@@ -1395,6 +1444,7 @@ async function finishBlock(completed) {
   }
   state.streakBlocks += 1;
   state.pendingTaskId = block.task_id;
+  state.pendingTaskless = block.task_id == null;
   state.pendingDuration = block.durationMin;
   renderStreak();
   await syncNow();
@@ -1408,8 +1458,15 @@ async function completeBlockWithCredit() {
   if (!block) {
     return;
   }
+  const startedTaskless = block.task_id == null;
   const lastActive = state.activeTaskId || block.task_id;
-  const { checked, note } = await openCreditModal([...state.touchedTaskIds]);
+  const modalTaskIds = startedTaskless
+    ? todayCreditCandidates().map((task) => task.id)
+    : [...state.touchedTaskIds];
+  const { checked, note } = await openCreditModal(modalTaskIds, {
+    checkedIds: startedTaskless ? new Set(state.touchedTaskIds) : null,
+    titleKey: startedTaskless ? "credit.titleUntethered" : "credit.title",
+  });
   try {
     await api(`/api/blocks/${block.id}/credit`, {
       method: "POST",
@@ -1425,6 +1482,7 @@ async function completeBlockWithCredit() {
   state.selectedTaskId = null; // clear the list highlight when the block ends
   state.streakBlocks += 1;
   state.pendingTaskId = lastActive;
+  state.pendingTaskless = startedTaskless;
   state.pendingDuration = block.durationMin;
   renderStreak();
   await syncNow();
@@ -1435,14 +1493,17 @@ async function completeBlockWithCredit() {
   await switchMode(next, { auto: true });
 }
 
-function openCreditModal(taskIds) {
+function openCreditModal(
+  taskIds,
+  { checkedIds = null, titleKey = "credit.title" } = {},
+) {
   return new Promise((resolve) => {
     const tasks = state.dashboard ? state.dashboard.tasks : [];
     const nameOf = (id) => {
       const task = tasks.find((tk) => tk.id === id);
       return task ? task.name : `#${id}`;
     };
-    els.creditTitle.textContent = t("credit.title");
+    els.creditTitle.textContent = t(titleKey);
     els.creditConfirm.textContent = t("credit.confirm");
     els.creditRecordLabel.textContent = t("credit.record");
     els.creditList.innerHTML = "";
@@ -1452,7 +1513,7 @@ function openCreditModal(taskIds) {
       const label = document.createElement("label");
       const cb = document.createElement("input");
       cb.type = "checkbox";
-      cb.checked = true;
+      cb.checked = checkedIds === null ? true : checkedIds.has(id);
       cb.dataset.id = String(id);
       const span = document.createElement("span");
       span.textContent = nameOf(id);
@@ -1512,10 +1573,14 @@ async function switchMode(mode, { auto = false } = {}) {
     return;
   }
   if (mode === "pomodoro" && state.settings.autoStartPomodoros) {
-    const taskId = state.pendingTaskId || state.selectedTaskId;
-    if (taskId) {
-      state.selectedTaskId = taskId;
-      await startBlock(taskId, state.pendingDuration);
+    if (state.pendingTaskless) {
+      await startBlock(null, state.pendingDuration);
+    } else {
+      const taskId = state.pendingTaskId || state.selectedTaskId;
+      if (taskId) {
+        state.selectedTaskId = taskId;
+        await startBlock(taskId, state.pendingDuration);
+      }
     }
     return;
   }
@@ -1638,11 +1703,8 @@ els.addTaskForm.addEventListener("submit", async (event) => {
 });
 
 async function startPomodoro(taskId = state.selectedTaskId) {
-  if (!taskId) {
-    return;
-  }
   try {
-    await startBlock(taskId, state.pendingDuration);
+    await startBlock(taskId ?? null, state.pendingDuration);
   } catch (error) {
     els.timerMode.textContent = error.message;
   }
@@ -1805,6 +1867,40 @@ async function handleTaskClick(event) {
     return;
   }
 
+
+  if (action === "pin") {
+    if (state.selectedTag) {
+      return;
+    }
+    const task = state.dashboard?.tasks.find((t) => t.id === taskId);
+    if (!task) {
+      return;
+    }
+    const ordered = tasksInBucket(task.bucket).map((t) => t.id);
+    if (ordered[0] === taskId) {
+      return;
+    }
+    const newOrder = [taskId, ...ordered.filter((id) => id !== taskId)];
+    newOrder.forEach((id, index) => {
+      const row = state.dashboard.tasks.find((t) => t.id === id);
+      if (row) {
+        row.sort_order = index;
+      }
+    });
+    renderAll();
+    try {
+      await api("/api/tasks/order", {
+        method: "PATCH",
+        body: JSON.stringify({ bucket: task.bucket, task_ids: newOrder }),
+      });
+      await syncNow();
+    } catch (error) {
+      window.alert(t("err.saveOrder", { msg: error.message }));
+      await syncNow();
+    }
+    return;
+  }
+
   if (action === "move") {
     const bucket = target.dataset.bucket;
     const task = state.dashboard?.tasks.find((t) => t.id === taskId);
@@ -1837,19 +1933,38 @@ async function handleTaskClick(event) {
 
   if (action === "activate") {
     if (state.activeBlock) {
-      // Mid-block: switch the active task (timer keeps running), confirmed
-      // first. The new task joins the touched set for completion credit.
+      // Mid-block: set the active task (timer keeps running). The task joins
+      // the touched set for completion credit. Replacing an existing active
+      // task needs confirmation; assigning one to a taskless block (no active
+      // task yet) does not — nothing is being replaced.
       if (taskId === state.activeTaskId) {
         return;
       }
-      const task = state.dashboard?.tasks.find((tk) => tk.id === taskId);
-      const name = task ? task.name : "";
-      if (!window.confirm(t("timer.confirmSwitch", { name }))) {
-        return;
+      const assigning = state.activeTaskId == null;
+      if (!assigning) {
+        const task = state.dashboard?.tasks.find((tk) => tk.id === taskId);
+        const name = task ? task.name : "";
+        if (!window.confirm(t("timer.confirmSwitch", { name }))) {
+          return;
+        }
       }
       state.activeTaskId = taskId;
       state.touchedTaskIds.add(taskId);
       state.pendingTaskId = taskId;
+      if (assigning) {
+        // Persist the anchor server-side so a refresh rehydrates the block
+        // with this task. Keep the local block.task_id null so this session's
+        // completion modal still follows the taskless (Today-list) path;
+        // switches stay client-only by design.
+        try {
+          await api(`/api/blocks/${state.activeBlock.id}/assign`, {
+            method: "POST",
+            body: JSON.stringify({ task_id: taskId }),
+          });
+        } catch (error) {
+          els.timerMode.textContent = t("err.endBlock", { msg: error.message });
+        }
+      }
       updateTimerControls();
       renderTaskList();
       return;
@@ -1892,6 +2007,16 @@ async function handleTaskClick(event) {
     const task = state.dashboard?.tasks.find((t) => t.id === taskId);
     if (task) {
       task.status = newStatus;
+      if (newStatus === "done") {
+        // Mirror the server re-home so the row sinks at once, before scheduleSync reconciles.
+        const maxOrder = Math.max(
+          -1,
+          ...state.dashboard.tasks
+            .filter((t) => t.bucket === task.bucket)
+            .map((t) => t.sort_order),
+        );
+        task.sort_order = maxOrder + 1;
+      }
       renderAll();
     }
     await api(`/api/tasks/${taskId}`, {

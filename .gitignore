@@ -7,3 +7,4 @@ __pycache__/
 .env
 node_modules/
 specs/*/runs/
+.DS_Store

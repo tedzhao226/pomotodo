@@ -39,13 +39,17 @@ class CreateBlockRequest(BaseModel):
 
 class BlockStartResponse(BaseModel):
     id: int
-    task_id: int
+    task_id: int | None
     duration_min: int
     started_at: str
 
 
 class EndBlockRequest(BaseModel):
     completed: bool
+
+
+class AssignBlockRequest(BaseModel):
+    task_id: int
 
 
 class CreditBlockRequest(BaseModel):
@@ -55,7 +59,7 @@ class CreditBlockRequest(BaseModel):
 
 class BlockResponse(BaseModel):
     id: int
-    task_id: int
+    task_id: int | None
     duration_min: int
     started_at: str
     ended_at: str | None
@@ -79,7 +83,7 @@ class DashboardTask(BaseModel):
 
 class RunningBlock(BaseModel):
     id: int
-    task_id: int
+    task_id: int | None
     task_name: str
     duration_min: int
     started_at: str
@@ -113,7 +117,7 @@ class StatsBlock(BaseModel):
     started_at: str
     ended_at: str | None
     duration_min: int
-    task_id: int
+    task_id: int | None
     task_name: str
     tags: list[str]
     note: str = ""

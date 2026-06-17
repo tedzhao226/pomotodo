@@ -8,6 +8,7 @@ from backend.db import get_session
 from backend.errors import NotFoundError, ValidationError
 from backend.repository import Repository
 from backend.schemas import (
+    AssignBlockRequest,
     BlockResponse,
     BlockStartResponse,
     CreateBlockRequest,
@@ -108,6 +109,18 @@ def delete_task(task_id: int, service: ServiceDep) -> None:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
+@router.post("/blocks", response_model=BlockStartResponse)
+def start_unanchored_block(
+    body: CreateBlockRequest,
+    service: ServiceDep,
+) -> BlockStartResponse:
+    try:
+        block = service.start_unanchored_block(body.duration_min)
+    except ValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return BlockStartResponse(**block)
+
+
 @router.post("/tasks/{task_id}/blocks", response_model=BlockStartResponse)
 def start_block(
     task_id: int,
@@ -131,6 +144,19 @@ def end_block(
 ) -> BlockResponse:
     try:
         block = service.end_block(block_id, body.completed)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return BlockResponse(**block)
+
+
+@router.post("/blocks/{block_id}/assign", response_model=BlockResponse)
+def assign_block_task(
+    block_id: int,
+    body: AssignBlockRequest,
+    service: ServiceDep,
+) -> BlockResponse:
+    try:
+        block = service.assign_block_task(block_id, body.task_id)
     except NotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return BlockResponse(**block)

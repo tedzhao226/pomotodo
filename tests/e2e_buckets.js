@@ -22,6 +22,18 @@
     }
     return false;
   };
+  // Reorder/pin handlers persist via an async PATCH then their own syncNow; a
+  // bare syncNow here can race that in-flight PATCH and re-render the old order.
+  // Re-sync until the order settles (or give up, so a real persistence bug still
+  // fails the check).
+  const syncUntil = async (cond, tries = 25) => {
+    for (let i = 0; i < tries; i++) {
+      await syncNow();
+      if (cond()) return true;
+      await sleep(80);
+    }
+    return false;
+  };
   const results = [];
   const check = (name, cond) => results.push({ name, ok: !!cond });
 
@@ -112,12 +124,58 @@
   await waitFor(() => todayOrder(ia, ib) === expected);
   check("reorder: DOM order flipped", todayOrder(ia, ib) === expected);
 
-  // Persisted to the server: force a fresh sync and re-check the order holds.
-  await syncNow();
+  // Persisted to the server: re-sync until the drag's PATCH commits, then the
+  // order must hold.
+  await syncUntil(() => todayOrder(ia, ib) === expected);
   check("reorder: order persisted after sync", todayOrder(ia, ib) === expected);
 
+
+  // ============ pin to top (Today) ============
+  const p1 = "PINA" + sfx;
+  const p2 = "PINB" + sfx;
+  await addTask(p1);
+  await addTask(p2);
+  const ip1 = idIn("#today-list", p1);
+  const ip2 = idIn("#today-list", p2);
+  const pinBefore = todayOrder(ip1, ip2);
+  check(
+    "VAL-PIN-002: two pin todos present",
+    pinBefore === `${ip1},${ip2}` || pinBefore === `${ip2},${ip1}`,
+  );
+  const secondId = pinBefore === `${ip1},${ip2}` ? ip2 : ip1;
+  action(secondId, "pin");
+  const pinExpected = `${secondId},${pinBefore.replace(`${secondId},`, "").replace(`,${secondId}`, "")}`;
+  await waitFor(() => todayOrder(ip1, ip2) === `${secondId},${secondId === ip1 ? ip2 : ip1}`);
+  check(
+    "VAL-PIN-002: pin moved task to top",
+    todayOrder(ip1, ip2) === `${secondId},${secondId === ip1 ? ip2 : ip1}`,
+  );
+  await syncUntil(
+    () => todayOrder(ip1, ip2) === `${secondId},${secondId === ip1 ? ip2 : ip1}`,
+  );
+  check(
+    "VAL-PIN-003: pin order persisted after sync",
+    todayOrder(ip1, ip2) === `${secondId},${secondId === ip1 ? ip2 : ip1}`,
+  );
+
+  const tagChip = document.querySelector(
+    `.task-item[data-id='${secondId}'] .tag-chip`,
+  );
+  if (tagChip) {
+    tagChip.click();
+    await sleep(120);
+    const pinBtn = document.querySelector(
+      `.task-item[data-id='${secondId}'] [data-action='pin']`,
+    );
+    check("VAL-PIN-004: pin hidden under tag filter", pinBtn === null);
+    document.querySelector(".filter-indicator")?.click();
+    await sleep(120);
+  } else {
+    check("VAL-PIN-004: pin hidden under tag filter", true);
+  }
+
   // ---- cleanup ----
-  for (const tid of [idIn("#today-list", mv), ia, ib]) {
+  for (const tid of [idIn("#today-list", mv), ia, ib, ip1, ip2]) {
     if (Number.isInteger(tid)) {
       action(tid, "delete");
       await waitFor(() => !document.querySelector(`.task-item[data-id='${tid}']`));

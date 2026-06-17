@@ -66,8 +66,8 @@ class Block(Base):
     __tablename__ = "blocks"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    task_id: Mapped[int] = mapped_column(
-        ForeignKey("tasks.id", ondelete="CASCADE")
+    task_id: Mapped[int | None] = mapped_column(
+        ForeignKey("tasks.id", ondelete="CASCADE"), nullable=True
     )
     duration_min: Mapped[int] = mapped_column(Integer)
     started_at: Mapped[datetime] = mapped_column(
@@ -79,7 +79,7 @@ class Block(Base):
     completed: Mapped[bool] = mapped_column(Boolean, default=False)
     note: Mapped[str] = mapped_column(Text, default="")
 
-    task: Mapped[Task] = relationship(back_populates="blocks")
+    task: Mapped[Task | None] = relationship(back_populates="blocks")
 
 
 class BreakState(Base):

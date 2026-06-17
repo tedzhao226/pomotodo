@@ -233,3 +233,21 @@ def test_dashboard_orders_today_by_sort_order(service):
     service.reorder_tasks("today", [b["id"], a["id"]])
     today = [t for t in service.get_dashboard()["tasks"] if t["bucket"] == "today"]
     assert [t["id"] for t in today] == [b["id"], a["id"]]
+
+def test_completing_task_sinks_to_bottom(service):
+    a = service.create_task_from_raw("a")  # sort_order 0
+    b = service.create_task_from_raw("b")  # 1
+    c = service.create_task_from_raw("c")  # 2
+    done = service.update_task(a["id"], status="done")
+    assert done["sort_order"] == 3  # below b and c
+    today = [t for t in service.get_dashboard()["tasks"] if t["bucket"] == "today"]
+    assert [t["id"] for t in today] == [b["id"], c["id"], a["id"]]
+
+
+def test_reopening_task_keeps_bottom_position(service):
+    a = service.create_task_from_raw("a")  # 0
+    service.create_task_from_raw("b")  # 1
+    service.update_task(a["id"], status="done")  # a -> sort_order 2
+    reopened = service.update_task(a["id"], status="active")
+    assert reopened["sort_order"] == 2  # not restored to its original slot
+

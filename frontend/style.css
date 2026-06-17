@@ -1057,7 +1057,7 @@ input[type="checkbox"] {
 
 .task-row:hover .row-actions,
 .task-item:has(.row-note.active) .row-actions {
-  width: 116px;
+  width: 140px;
 }
 
 .row-edit,
@@ -1067,6 +1067,23 @@ input[type="checkbox"] {
   height: 24px;
   padding: 0;
   border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.85rem;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+}
+
+.row-pin {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 7px;
   background: transparent;
   color: var(--muted);
   font-size: 0.85rem;
@@ -1112,6 +1129,7 @@ input[type="checkbox"] {
 }
 
 .task-row:hover .row-note,
+.task-row:hover .row-pin,
 .task-row:hover .row-move,
 .task-row:hover .row-edit,
 .task-row:hover .row-delete {

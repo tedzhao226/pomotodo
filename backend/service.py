@@ -108,10 +108,23 @@ class Service:
             raise NotFoundError(f"Task {task_id} not found")
         return self._repo.create_block(task_id, duration_min)
 
+    def start_unanchored_block(self, duration_min: int) -> dict:
+        if duration_min <= 0:
+            raise ValidationError("duration_min must be positive")
+        return self._repo.create_block(None, duration_min)
+
     def end_block(self, block_id: int, completed: bool) -> dict:
         block = self._repo.end_block(block_id, completed)
         if block is None:
             raise NotFoundError(f"Block {block_id} not found")
+        return block
+
+    def assign_block_task(self, block_id: int, task_id: int) -> dict:
+        if self._repo.get_task(task_id) is None:
+            raise NotFoundError(f"Task {task_id} not found")
+        block = self._repo.assign_block_task(block_id, task_id)
+        if block is None:
+            raise NotFoundError(f"Running block {block_id} not found")
         return block
 
     def credit_block(

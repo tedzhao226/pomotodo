@@ -31,8 +31,10 @@
     s.dispatchEvent(new Event("change", { bubbles: true }));
     await sleep(120);
   };
-  const navMainText = () =>
-    document.querySelector("[data-view=main]").textContent.trim();
+  // Use a nav label that actually translates (nav.main is the brand "Pomotodo",
+  // identical in en/zh, so it can't detect a language switch).
+  const navText = () =>
+    document.querySelector('[data-i18n="nav.stats"]').textContent.trim();
   const idIn = (listSel, name) => {
     const r = [...document.querySelectorAll(`${listSel} .task-row`)].find(
       (x) => x.querySelector(".task-name").textContent === name,
@@ -47,18 +49,18 @@
   window.confirm = () => true;
 
   // ============ language switch ============
-  const enMain = MESSAGES.en["nav.main"];
-  const zhMain = MESSAGES.zh["nav.main"];
-  check("i18n: en/zh strings differ", typeof enMain === "string" && enMain !== zhMain);
+  const enNav = MESSAGES.en["nav.stats"];
+  const zhNav = MESSAGES.zh["nav.stats"];
+  check("i18n: en/zh strings differ", typeof enNav === "string" && enNav !== zhNav);
 
   await setLang("en");
-  check("i18n: English label applied", navMainText() === enMain);
+  check("i18n: English label applied", navText() === enNav);
 
   await setLang("zh");
-  check("i18n: Chinese label applied", navMainText() === zhMain);
+  check("i18n: Chinese label applied", navText() === zhNav);
 
   await setLang("en");
-  check("i18n: switches back to English", navMainText() === enMain);
+  check("i18n: switches back to English", navText() === enNav);
 
   // ============ note Markdown rendering + XSS safety ============
   const nn = "NOTE" + Date.now().toString().slice(-5);

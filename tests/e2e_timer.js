@@ -49,6 +49,8 @@
       longEvery: 3,
       autoStartPomodoros: false,
       autoStartRest: false,
+      soundEnabled: false,
+      tickEnabled: false,
       ...over,
     };
     saveSettings(state.settings);
@@ -79,14 +81,22 @@
     }
     el("#credit-confirm").click();
     await waitFor(() => state.activeBlock === null && el("#credit-modal").hidden === true);
+    // completeBlockWithCredit clears activeBlock before its trailing syncNow();
+    // wait for the dashboard to reflect the credit so bd() reads are fresh.
+    await syncNow();
   };
   const abortEsc = async () => {
     document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
     await waitFor(() => state.activeBlock === null);
+    // The abort's sync + re-render run after activeBlock clears; let them settle
+    // so the list highlight and timer label are updated before assertions.
+    await syncNow();
+    await sleep(60);
   };
 
   // ---- setup ----
   setSettings();
+  check("VAL-SOUND-001: sound off in tests", state.settings.soundEnabled === false);
   window.confirm = () => true;
   const sfx = Date.now().toString().slice(-5);
   const A = "E2E-A-" + sfx;
@@ -136,7 +146,7 @@
   applySettingsToControls(); // inits the idle clock
   updateTimerControls(); // refreshes the task label
   check("VAL1: no auto-select", state.selectedTaskId === null);
-  check("VAL1: START disabled when none", el("#timer-btn").disabled === true);
+  check("VAL-FREE-001: START enabled when none", el("#timer-btn").disabled === false);
   check("VAL1: label = no task", el("#current-task").textContent === t("timer.noTask"));
   check("VAL1: clock = full duration", el("#timer-display").textContent === "30:00");
 
@@ -147,7 +157,86 @@
   check("VAL2: row highlighted", row(aId).classList.contains("active"));
   clickRow(aId);
   check("VAL2: deselect clears", state.selectedTaskId === null);
-  check("VAL2: START disabled again", el("#timer-btn").disabled === true);
+  check("VAL2: START enabled again after deselect", el("#timer-btn").disabled === false);
+
+
+  // ---- VAL-FREE: taskless pomodoro start + Today-list credit ----
+  const startTaskless = async () => {
+    // Always start from a clean pomodoro tab: a prior completion may have left
+    // the timer in break mode, where #timer-btn would start a break (no block).
+    el('.timer-tab[data-mode="pomodoro"]').click();
+    await sleep(150);
+    state.selectedTaskId = null;
+    updateTimerControls();
+    el("#timer-btn").click();
+    await waitFor(() => !!state.activeBlock && state.running);
+  };
+
+  state.activeBlock = null;
+  state.running = false;
+  state.selectedTaskId = null;
+  el('.timer-tab[data-mode="pomodoro"]').click();
+  await sleep(150);
+  await startTaskless();
+  check("VAL-FREE-002: activeBlock open", !!state.activeBlock);
+  check("VAL-FREE-002: activeTaskId null", state.activeTaskId === null);
+  check("VAL-FREE-002: running", state.running === true);
+  await syncNow();
+  check(
+    "VAL-FREE-002: server running_block has null task_id",
+    state.dashboard.running_block && state.dashboard.running_block.task_id == null,
+  );
+  await abortEsc();
+
+  await startTaskless();
+  await expire();
+  check("VAL-FREE-004: credit modal shown", el("#credit-modal").hidden === false);
+  const freeBoxes = [...document.querySelectorAll("#credit-list input")];
+  check(
+    "VAL-FREE-004: Today tasks listed",
+    freeBoxes.length >= 3 &&
+      freeBoxes.some((c) => Number(c.dataset.id) === aId) &&
+      freeBoxes.some((c) => Number(c.dataset.id) === bId),
+  );
+  check(
+    "VAL-FREE-004: nothing pre-checked",
+    freeBoxes.every((c) => c.checked === false),
+  );
+  // confirm with none checked completes the block without crediting
+  el("#credit-confirm").click();
+  await waitFor(() => state.activeBlock === null);
+
+  const aBeforeFree = bd(A);
+  await startTaskless();
+  await expire();
+  const boxA = [...document.querySelectorAll("#credit-list input")].find(
+    (c) => Number(c.dataset.id) === aId,
+  );
+  boxA.checked = true;
+  await confirmCredit();
+  check("VAL-FREE-005: credited task +1", bd(A) === aBeforeFree + 1);
+
+  await startTaskless();
+  clickRow(bId);
+  await sleep(150);
+  await expire();
+  const touchedBox = [...document.querySelectorAll("#credit-list input")].find(
+    (c) => Number(c.dataset.id) === bId,
+  );
+  check("VAL-FREE-006: touched task pre-checked", touchedBox && touchedBox.checked === true);
+  const untouchedBox = [...document.querySelectorAll("#credit-list input")].find(
+    (c) => Number(c.dataset.id) === aId,
+  );
+  check("VAL-FREE-006: untouched unchecked", untouchedBox && untouchedBox.checked === false);
+  await confirmCredit([aId]);
+
+  // restore clean idle for VAL-3 onward
+  state.activeBlock = null;
+  state.running = false;
+  state.selectedTaskId = null;
+  state.touchedTaskIds = new Set();
+  el('.timer-tab[data-mode="pomodoro"]').click();
+  await sleep(150);
 
   // ---- VAL-3: start a block ----
   await start(aId);
@@ -213,7 +302,11 @@
   );
 
   // ---- VAL-8: completion credit (checklist defaults checked; uncheck A) ----
+  // Pin the streak so the break type is deterministic regardless of how many
+  // blocks earlier sections credited (VAL-FREE legitimately credits A and B).
+  state.streakBlocks = 0;
   const streakBefore = state.streakBlocks;
+  const c8 = bd(C), a8 = bd(A), b8 = bd(B); // baselines: VAL8 asserts deltas
   await expire();
   check("VAL8: credit modal shown", el("#credit-modal").hidden === false);
   check("VAL8: checklist lists touched 2", document.querySelectorAll("#credit-list input").length === 2);
@@ -222,9 +315,9 @@
     [...document.querySelectorAll("#credit-list input")].every((c) => c.checked),
   );
   await confirmCredit([aId]); // drop A
-  check("VAL8: C credited +1", bd(C) === 1);
-  check("VAL8: A unchecked -> 0", bd(A) === 0);
-  check("VAL8: B removed earlier -> 0", bd(B) === 0);
+  check("VAL8: C credited +1", bd(C) === c8 + 1);
+  check("VAL8: A unchecked -> +0", bd(A) === a8);
+  check("VAL8: B removed earlier -> +0", bd(B) === b8);
   check("VAL8: streak +1 once", state.streakBlocks === streakBefore + 1);
   check("VAL8: block cleared", state.activeBlock === null);
   check("VAL8: transitions to short rest", state.timerMode === "shortBreak");
