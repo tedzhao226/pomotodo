@@ -1,6 +1,13 @@
 {
   "name": "pomotodo-frontend-tests",
   "private": true,
-  "scripts": { "test": "vitest run" },
-  "devDependencies": { "vitest": "^2", "jsdom": "^25" }
+  "scripts": {
+    "test": "vitest run",
+    "e2e": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.61.0",
+    "jsdom": "^25",
+    "vitest": "^2"
+  }
 }

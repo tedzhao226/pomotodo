@@ -8,3 +8,8 @@ __pycache__/
 node_modules/
 specs/*/runs/
 .DS_Store
+test-results/
+playwright-report/
+.last-run.json
+/blob-report/
+playwright/.cache/

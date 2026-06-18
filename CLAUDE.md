@@ -6,46 +6,39 @@ Three layers, all runnable locally:
 
 - **Backend unit** — `uv run pytest -q` (`tests/test_*.py` over `backend/`).
 - **Frontend unit** — `npm test` (vitest, `tests/js/*.test.js`; pure helpers/i18n only — `app.js` is a classic script with no exports).
-- **Browser e2e (full testing)** — drive the real DOM/state against a live server.
+- **Browser e2e (full testing)** — `npm run e2e` (Playwright, `tests/e2e/*.spec.js`).
 
-### Full testing: use the cmux browser harness
-
-For full end-to-end browser testing, use the **cmux browser harness** (in-page `cmux browser eval`).
-
-The e2e scripts are `tests/e2e_*.js` (`e2e_timer`, `e2e_task_crud`, `e2e_buckets`, `e2e_i18n_notes`, `e2e_history_delete`): each a self-contained async script that drives the real app and returns `{ passed, failedCount, failed }`.
-
-Run it against a clean throwaway server:
+### Full testing: Playwright
 
 ```sh
-rm -f /tmp/pomo_test.db
-POMOTODO_DATABASE_URL="sqlite:////tmp/pomo_test.db" uv run alembic upgrade head
-POMOTODO_DATABASE_URL="sqlite:////tmp/pomo_test.db" uv run uvicorn backend.main:app --port 8731 &
-# Open a browser surface and CAPTURE ITS ID (open reuses an existing panel, so
-# never assume; always read the returned id):
-SID=$(cmux browser open http://localhost:8731 | grep -oE "surface:[0-9]+" | head -1)
-SCRIPT=$(cat tests/e2e_timer.js); cmux browser eval --surface "$SID" "$SCRIPT"
-# the run takes ~20s; poll the report via eval (see gotcha below):
-#   cmux browser eval --surface "$SID" "window.__e2e ? JSON.stringify(window.__e2e) : 'pending'"
-# expect {"passed":N,"failedCount":0}
+npm run e2e                      # all specs, headless
+npx playwright test timer        # one spec
+npx playwright test --headed     # watch it run
+npx playwright show-trace ...    # inspect a failure trace
 ```
 
-**Always close the surface you opened when the run is done** — leave no orphan
-browser panels:
+Self-contained: `playwright.config.js` `webServer` wipes + re-migrates a throwaway
+sqlite DB (`/tmp/pomo_pw.db`), boots uvicorn on port 8788, and tears it down — no
+manual server, no cmux. Server singletons (`running_block`, `break_state`) forbid
+parallelism, so `workers: 1`, serial. First-time setup needs the browser:
+`npx playwright install chromium`.
 
-```sh
-cmux close-surface --surface "$SID"   # close ONLY the captured id, never a blind/other tab
-pkill -f "uvicorn backend.main:app --port 8731"   # and stop the throwaway server
-```
+Specs under `tests/e2e/` (one per original suite): `timer`, `task-crud`,
+`buckets`, `i18n-notes`, `history-delete`. Shared helpers in `_helpers.js`.
 
-Harness gotchas (learned the hard way):
+Conventions (the app ships globals, not a test API — `app.js` is a classic script
+with no exports):
 
-- Use a **fresh DB per run** (each script seeds its own tasks; a reused DB
-  accumulates rows and corrupts later runs).
-- Read the report with `cmux browser eval`, **not** `cmux browser wait --function`
-  — `wait` runs in an isolated world that can't see `state` or `window.__e2e`.
-- After `goto`/`open`, settle ~3s before evaluating (app globals aren't ready
-  immediately).
-
-New e2e scripts should follow the `tests/e2e_timer.js` pattern: deterministic
-settings, condition waits (not fixed sleeps), one JSON report, and stash the
-result on `window.__e2e`.
+- DOM/user-visible behaviour → locators + web-first assertions
+  (`expect(locator).toBeVisible()`, `toHaveClass`, `toHaveText`).
+- App internals the app forces tests to touch (`state`, `syncNow`, `timerIsPaused`,
+  `updateTabTitle`) → `page.evaluate`, wrapped in `expect.poll` for waiting.
+- **Row action buttons** (edit/delete/move/pin/toggle) are hover-revealed and
+  overlapped by the block badge — click them with `rowAction(scope, action)`
+  (dispatchEvent), not coordinate clicks (even `force:true` lands on the badge).
+- Locate task rows by **`data-id`** (a row's `hasText` stops matching once its name
+  becomes an `<input>` in the editor).
+- The **timer** suite (`timer.spec.js` + `_timer-suite.js`) is internal-coupled
+  enough that it runs the full state-machine sequence in-page via `page.evaluate`
+  and asserts the per-check report; time is advanced by poking `state.deadline`
+  (instant), not real waits.
