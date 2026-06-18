@@ -22,6 +22,8 @@ services:
       db:
         condition: service_healthy
     ports:
+      # pomo.staging (port-free) maps to 127.0.0.1:80 via /etc/hosts; 8001 kept.
+      - "80:8000"
       - "8001:8000"
     restart: unless-stopped
 
