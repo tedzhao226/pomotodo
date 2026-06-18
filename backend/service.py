@@ -119,10 +119,21 @@ class Service:
             raise NotFoundError(f"Block {block_id} not found")
         return block
 
-    def assign_block_task(self, block_id: int, task_id: int) -> dict:
-        if self._repo.get_task(task_id) is None:
-            raise NotFoundError(f"Task {task_id} not found")
-        block = self._repo.assign_block_task(block_id, task_id)
+    def set_block_tasks(
+        self,
+        block_id: int,
+        active_task_id: int | None,
+        touched_task_ids: list[int],
+    ) -> dict:
+        ids = list(touched_task_ids)
+        if active_task_id is not None:
+            ids.append(active_task_id)
+        for task_id in dict.fromkeys(ids):
+            if self._repo.get_task(task_id) is None:
+                raise NotFoundError(f"Task {task_id} not found")
+        block = self._repo.set_block_tasks(
+            block_id, active_task_id, touched_task_ids
+        )
         if block is None:
             raise NotFoundError(f"Running block {block_id} not found")
         return block

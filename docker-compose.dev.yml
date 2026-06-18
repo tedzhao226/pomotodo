@@ -24,7 +24,14 @@ services:
         condition: service_healthy
     ports:
       - "8000:8000"
+    networks:            # default = reach db; proxy = reachable by the Caddy proxy (pomo.dev)
+      - default
+      - proxy
     restart: unless-stopped
+
+networks:
+  proxy:
+    external: true
 
 volumes:
   pgdata_dev:

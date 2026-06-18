@@ -48,8 +48,9 @@ class EndBlockRequest(BaseModel):
     completed: bool
 
 
-class AssignBlockRequest(BaseModel):
-    task_id: int
+class SetBlockTasksRequest(BaseModel):
+    active_task_id: int | None
+    touched_task_ids: list[int]
 
 
 class CreditBlockRequest(BaseModel):
@@ -87,6 +88,7 @@ class RunningBlock(BaseModel):
     task_name: str
     duration_min: int
     started_at: str
+    touched_task_ids: list[int] = []
 
 
 class SetBreakRequest(BaseModel):

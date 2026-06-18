@@ -3,7 +3,7 @@ from datetime import datetime
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from backend.models import Block, BreakState, Task, TaskTag, utcnow
+from backend.models import Block, BlockTouch, BreakState, Task, TaskTag, utcnow
 
 
 def _iso(value: datetime | None) -> str | None:
@@ -216,13 +216,34 @@ class Repository:
         self._session.flush()
         return self.get_block(block_id)
 
-    def assign_block_task(self, block_id: int, task_id: int) -> dict | None:
+    def set_block_tasks(
+        self,
+        block_id: int,
+        active_task_id: int | None,
+        touched_task_ids: list[int],
+    ) -> dict | None:
         block = self._session.get(Block, block_id)
         if block is None or block.ended_at is not None:
             return None
-        block.task_id = task_id
+        # task_id is the anchor — credit/dedup attributes the single pomo to it.
+        # Set it only on the first assign (a taskless block); later switches just
+        # grow the touched set, leaving the anchor put.
+        if block.task_id is None and active_task_id is not None:
+            block.task_id = active_task_id
+        # Replace the touched set wholesale.
+        self._session.query(BlockTouch).filter(
+            BlockTouch.block_id == block_id
+        ).delete()
+        for task_id in dict.fromkeys(touched_task_ids):
+            self._session.add(BlockTouch(block_id=block_id, task_id=task_id))
         self._session.flush()
         return self.get_block(block_id)
+
+    def _block_touched_ids(self, block_id: int) -> list[int]:
+        rows = self._session.execute(
+            select(BlockTouch.task_id).where(BlockTouch.block_id == block_id)
+        ).scalars()
+        return sorted(rows)
 
     def credit_block(
         self, block_id: int, task_ids: list[int], note: str = ""
@@ -255,6 +276,7 @@ class Repository:
             "task_name": task_name,
             "duration_min": block.duration_min,
             "started_at": _iso(block.started_at),
+            "touched_task_ids": self._block_touched_ids(block.id),
         }
 
     # ---- break state (singleton row id=1: the running break, no task) ----

@@ -1,6 +1,14 @@
 # Pomotodo
 
-Local pomodoro timer and todo tracker.
+Full-stack pomodoro timer and todo tracker — focus blocks, task sync, history, and tags.
+
+## Stack
+
+- **Backend**: FastAPI (router / service / repository), SQLAlchemy, Alembic migrations, Pydantic schemas
+- **Frontend**: vanilla JS SPA with i18n
+- **TUI**: terminal client over the same API
+- **Infra**: Docker + Compose (Postgres staging), `uv` packaging
+- **Tests**: pytest (unit/integration) + Vitest + Playwright e2e
 
 ## Setup
 

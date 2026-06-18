@@ -82,6 +82,20 @@ class Block(Base):
     task: Mapped[Task | None] = relationship(back_populates="blocks")
 
 
+class BlockTouch(Base):
+    # A task touched during a block (a credit candidate). block.task_id is the
+    # current active task; this set is everything the block has touched, so a
+    # mid-block reload restores the full completion checklist.
+    __tablename__ = "block_touches"
+
+    block_id: Mapped[int] = mapped_column(
+        ForeignKey("blocks.id", ondelete="CASCADE"), primary_key=True
+    )
+    task_id: Mapped[int] = mapped_column(
+        ForeignKey("tasks.id", ondelete="CASCADE"), primary_key=True
+    )
+
+
 class BreakState(Base):
     # Singleton (id == 1): the running break, mirroring the client's
     # {mode, deadline} so a break follows the user across devices. No task.

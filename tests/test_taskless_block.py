@@ -49,13 +49,14 @@ def test_assign_persists_anchor_on_taskless_block(service):
     block = service.start_unanchored_block(25)
     assert block["task_id"] is None
 
-    assigned = service.assign_block_task(block["id"], task["id"])
+    assigned = service.set_block_tasks(block["id"], task["id"], [task["id"]])
     assert assigned["task_id"] == task["id"]
 
     # A reload reads the running block from the dashboard — anchor must survive.
     running = service.get_dashboard()["running_block"]
     assert running["task_id"] == task["id"]
     assert running["task_name"] == "write tests"
+    assert running["touched_task_ids"] == [task["id"]]
 
 
 def test_assign_unknown_task_raises(service):
@@ -63,7 +64,7 @@ def test_assign_unknown_task_raises(service):
 
     block = service.start_unanchored_block(25)
     with pytest.raises(NotFoundError):
-        service.assign_block_task(block["id"], 9999)
+        service.set_block_tasks(block["id"], 9999, [9999])
 
 
 def test_stats_response_accepts_taskless_block(service):

@@ -8,7 +8,6 @@ from backend.db import get_session
 from backend.errors import NotFoundError, ValidationError
 from backend.repository import Repository
 from backend.schemas import (
-    AssignBlockRequest,
     BlockResponse,
     BlockStartResponse,
     CreateBlockRequest,
@@ -18,6 +17,7 @@ from backend.schemas import (
     EndBlockRequest,
     HistoryResponse,
     ReorderRequest,
+    SetBlockTasksRequest,
     SetBreakRequest,
     StatsResponse,
     TaskResponse,
@@ -149,14 +149,16 @@ def end_block(
     return BlockResponse(**block)
 
 
-@router.post("/blocks/{block_id}/assign", response_model=BlockResponse)
-def assign_block_task(
+@router.put("/blocks/{block_id}/tasks", response_model=BlockResponse)
+def set_block_tasks(
     block_id: int,
-    body: AssignBlockRequest,
+    body: SetBlockTasksRequest,
     service: ServiceDep,
 ) -> BlockResponse:
     try:
-        block = service.assign_block_task(block_id, body.task_id)
+        block = service.set_block_tasks(
+            block_id, body.active_task_id, body.touched_task_ids
+        )
     except NotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return BlockResponse(**block)

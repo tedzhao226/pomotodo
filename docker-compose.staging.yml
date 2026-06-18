@@ -22,10 +22,16 @@ services:
       db:
         condition: service_healthy
     ports:
-      # pomo.staging (port-free) maps to 127.0.0.1:80 via /etc/hosts; 8001 kept.
-      - "80:8000"
+      # :80 is now fronted by the shared staging-local Caddy proxy (host: staging-local); 8001 kept for direct access.
       - "8001:8000"
+    networks:            # default = reach db; proxy = reachable by the Caddy proxy
+      - default
+      - proxy
     restart: unless-stopped
+
+networks:
+  proxy:
+    external: true
 
 volumes:
   pgdata_staging:

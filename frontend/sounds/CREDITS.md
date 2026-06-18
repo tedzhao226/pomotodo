@@ -1,20 +1,20 @@
 # Sound credits
 
-All three sounds are built from free-license recordings by
-`scripts/fetch_sounds.sh` (trimmed/faded with ffmpeg).
+All timer sounds are built by `scripts/fetch_sounds.sh` (trimmed/faded with
+ffmpeg). Theme: a soft airplane "cabin chime" — unobtrusive, physical and warm.
 
-## focus-end.wav, break-end.wav
+## start.wav, focus-end.wav, break-end.wav
 
-Derived from **"Gong or bell vibrant (short)"** — a real bell ring, the
-pomodoro-clock "ding" at the end of a work or break block.
+Built from **"Airplane Chime Sound Effect"** — a soft two-tone cabin chime.
 
-- Source: https://commons.wikimedia.org/wiki/File:Gong_or_bell_vibrant_(short).ogg
+- `focus-end` / `break-end`: the descending chime ("done"); `start`: the same
+  two tones reordered low→high ("go").
+- Source: https://commons.wikimedia.org/wiki/File:Airplane_Chime_Sound_Effect.ogg
 - License: Creative Commons CC0 1.0 (public domain, no attribution required)
+- Author: Sharelk
 
-## start.wav
+## tick.wav
 
-A single tick from **"Clock ticking"** — the mechanical kitchen-timer "wind"
-cue when a block starts.
-
-- Source: https://commons.wikimedia.org/wiki/File:Clock_ticking.ogg
-- License: Public domain (released by the copyright holder)
+The per-second tick — a soft, warm low sine blip — is **synthesized** by
+`scripts/fetch_sounds.sh` (ffmpeg `sine=180Hz`, fast decay). No external source;
+public domain.
