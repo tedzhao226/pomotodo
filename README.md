@@ -2,6 +2,8 @@
 
 Full-stack pomodoro timer and todo tracker — focus blocks, task sync, history, and tags.
 
+![Pomotodo — timer and todo tracker UI](docs/screenshot.png)
+
 ## Stack
 
 - **Backend**: FastAPI (router / service / repository), SQLAlchemy, Alembic migrations, Pydantic schemas
