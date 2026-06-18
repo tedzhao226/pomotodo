@@ -925,6 +925,22 @@ function trendAxis(series, { w = 640, pad = 10 } = {}) {
   return `<div class="trend-axis">${ticks}</div>`;
 }
 
+// Per-day pomo counts above a bar chart. Flex cells line up with the bars (and
+// any axis below); the latest day is emphasized, zero days show nothing.
+function barValues(series) {
+  if (!series.length) {
+    return "";
+  }
+  const last = series.length - 1;
+  const cells = series
+    .map(
+      (d, i) =>
+        `<span class="bar-val${i === last ? " is-today" : ""}">${d.count > 0 ? d.count : ""}</span>`,
+    )
+    .join("");
+  return `<div class="bar-values">${cells}</div>`;
+}
+
 // Narrow weekday initials under the THIS WEEK mini bars. Evenly spaced cells
 // line up with the bars; the latest day (today) is emphasized.
 function miniWeekAxis(series) {
@@ -1068,6 +1084,7 @@ function renderMiniCards() {
   }
   const week = perDaySeries(state.stats.blocks, 7);
   els.miniWeek.innerHTML =
+    barValues(week) +
     `<div class="mini-week-bars">${svgBars(week.map((d) => d.count))}</div>` +
     miniWeekAxis(week);
   const weekTotal = week.reduce((s, d) => s + d.count, 0);
@@ -1133,7 +1150,8 @@ function renderStats() {
 
   const trendSeries = perDaySeries(state.stats.blocks, days);
   els.trendChart.innerHTML =
-    `<div class="trend-plot">${svgLine(trendSeries.map((d) => d.count))}</div>` +
+    barValues(trendSeries) +
+    `<div class="trend-plot">${svgBars(trendSeries.map((d) => d.count), { w: 640, h: 180 })}</div>` +
     trendAxis(trendSeries);
 
   const tags = [...state.stats.tags]

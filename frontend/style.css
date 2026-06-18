@@ -1424,6 +1424,23 @@ button.mini-card:active {
   align-items: flex-end;
 }
 
+.bar-values {
+  display: flex;
+  margin-bottom: 2px;
+}
+
+.bar-val {
+  flex: 1;
+  text-align: center;
+  font-size: 0.6rem;
+  font-weight: 600;
+  color: var(--ink-strong);
+}
+
+.bar-val.is-today {
+  color: var(--accent, var(--tomato));
+}
+
 .mini-week-axis {
   display: flex;
   margin-top: 3px;
