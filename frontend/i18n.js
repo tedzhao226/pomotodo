@@ -145,8 +145,8 @@ const MESSAGES = {
     "err.move": "Couldn't move task: {msg}",
     "err.saveOrder": "Couldn't save order: {msg}",
 
-    "unit.block.one": "block",
-    "unit.block.other": "blocks",
+    "unit.block.one": "pomo",
+    "unit.block.other": "pomos",
     "unit.pomo.one": "pomo",
     "unit.pomo.other": "pomos",
   },
@@ -318,7 +318,7 @@ function t(key, vars) {
   return str;
 }
 
-// English pluralizes; Chinese has a single form. Used for "{n} blocks/pomos".
+// English pluralizes; Chinese has a single form. Used for "{n} pomos".
 function plural(noun, n) {
   return t(`unit.${noun}.${n === 1 ? "one" : "other"}`);
 }

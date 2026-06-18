@@ -19,12 +19,12 @@ describe("t", () => {
 
 describe("plural", () => {
   it("returns singular for n=1", () => {
-    expect(plural("block", 1)).toBe("block");
+    expect(plural("block", 1)).toBe("pomo");
     expect(plural("pomo", 1)).toBe("pomo");
   });
 
   it("returns plural for n=2", () => {
-    expect(plural("block", 2)).toBe("blocks");
+    expect(plural("block", 2)).toBe("pomos");
     expect(plural("pomo", 2)).toBe("pomos");
   });
 });
