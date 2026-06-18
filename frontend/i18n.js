@@ -13,7 +13,7 @@ const MESSAGES = {
     "history.deleteTodo": "Delete todo",
     "status.active": "Active",
     "status.done": "Done",
-    "status.deleted": "Deleted",
+    "status.archived": "Archived",
 
     "timer.title": "Timer",
     "timer.ready": "Ready",
@@ -163,7 +163,7 @@ const MESSAGES = {
     "history.deleteTodo": "删除待办",
     "status.active": "进行中",
     "status.done": "已完成",
-    "status.deleted": "已删除",
+    "status.archived": "已归档",
 
     "timer.title": "计时器",
     "timer.ready": "就绪",

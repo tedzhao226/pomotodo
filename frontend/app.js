@@ -1350,18 +1350,22 @@ function renderHistory() {
   els.historyTodos.innerHTML = todos.length
     ? todos
         .map((todo) => {
-          const status = todo.archived
-            ? "deleted"
-            : todo.status === "done"
+          // Completion wins over archiving: a finished todo cleared from the
+          // board is "done", not "archived". Only a todo removed without ever
+          // being completed reads as "archived".
+          const status =
+            todo.status === "done"
               ? "done"
-              : "active";
+              : todo.archived
+                ? "archived"
+                : "active";
           const tags = todo.tags
             .map((x) => `<span class="log-tag">#${escapeHtml(x)}</span>`)
             .join(" ");
           const deleteBtn = `<button type="button" class="row-delete" data-action="delete-todo" data-id="${todo.id}" title="${t("history.deleteTodo")}">✕</button>`;
           return `<li class="history-todo">
             <span class="status-chip status-chip-${status}">${t(`status.${status}`)}</span>
-            <span class="history-todo-name${todo.archived ? " is-deleted" : ""}">${tags} ${escapeHtml(todo.name)}</span>
+            <span class="history-todo-name${todo.archived ? " is-archived" : ""}">${tags} ${escapeHtml(todo.name)}</span>
             <span class="history-todo-blocks">${todo.blocks_done} ${plural("block", todo.blocks_done)}</span>
             <span class="history-todo-date">${escapeHtml(dayHeading(localDayKey(new Date(todo.created_at))))}</span>
             ${deleteBtn}

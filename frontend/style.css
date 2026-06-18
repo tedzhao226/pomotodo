@@ -568,7 +568,7 @@ input[type="checkbox"] {
   white-space: nowrap;
 }
 
-.history-todo-name.is-deleted {
+.history-todo-name.is-archived {
   color: var(--muted);
   text-decoration: line-through;
 }
@@ -606,7 +606,7 @@ input[type="checkbox"] {
   color: var(--green-deep);
 }
 
-.status-chip-deleted {
+.status-chip-archived {
   background: #f0ede7;
   color: var(--muted);
 }
