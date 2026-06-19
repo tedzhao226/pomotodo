@@ -85,6 +85,7 @@ const els = {
   streakDots: document.getElementById("streak-dots"),
   todayList: document.getElementById("today-list"),
   backlogList: document.getElementById("backlog-list"),
+  backlogBucket: document.getElementById("backlog-bucket"),
   plannedSum: document.getElementById("planned-sum"),
   filterIndicator: document.getElementById("filter-indicator"),
   clearCompletedBtn: document.getElementById("clear-completed-btn"),
@@ -2154,6 +2155,14 @@ async function handleTaskClick(event) {
 
 els.todayList.addEventListener("click", handleTaskClick);
 els.backlogList.addEventListener("click", handleTaskClick);
+
+// Collapse state for the Backlog section, persisted on its own (the settings
+// form rebuilds state.settings wholesale, so it can't live there).
+const BACKLOG_OPEN_KEY = "pomotodo.backlogOpen";
+els.backlogBucket.open = localStorage.getItem(BACKLOG_OPEN_KEY) !== "false";
+els.backlogBucket.addEventListener("toggle", () => {
+  localStorage.setItem(BACKLOG_OPEN_KEY, els.backlogBucket.open);
+});
 
 // In the inline editor: Enter saves, Shift+Enter inserts a newline (note textarea).
 function handleEditorKeydown(event) {

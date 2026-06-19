@@ -364,6 +364,29 @@ input[type="checkbox"] {
   color: var(--muted);
 }
 
+/* Backlog header doubles as a <summary> collapse toggle. */
+summary.bucket-head {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+summary.bucket-head::-webkit-details-marker {
+  display: none;
+}
+
+summary.bucket-head::before {
+  content: "▸";
+  font-size: 0.7em;
+  transition: transform 0.15s ease;
+}
+
+details[open] > summary.bucket-head::before {
+  transform: rotate(90deg);
+}
+
 .planned-sum {
   font-size: 0.78rem;
   font-weight: 500;
