@@ -847,6 +847,20 @@ input[type="checkbox"] {
   color: var(--ink-strong);
 }
 
+.credit-row.label-only label {
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.credit-divider {
+  margin-top: 0.3rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--line);
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
 .modal-actions {
   display: flex;
   justify-content: flex-end;

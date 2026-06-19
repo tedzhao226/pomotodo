@@ -445,13 +445,16 @@ async function stopTimer() {
 
 function updateTimerControls() {
   const tasks = state.dashboard ? state.dashboard.tasks : [];
-  // Drop a stale selection only if the task no longer exists; status/filter don't matter.
-  // No task is auto-selected: the user picks one (and can deselect it).
-  if (
-    state.selectedTaskId !== null &&
-    !tasks.some((task) => task.id === state.selectedTaskId)
-  ) {
+  // Detach a carried/picked task once it's gone or marked done — this is how a
+  // finished task drops off the next pomo (selection and pending carry alike).
+  const detached = (id) =>
+    id !== null && !tasks.some((task) => task.id === id && task.status !== "done");
+  if (detached(state.selectedTaskId)) {
     state.selectedTaskId = null;
+  }
+  if (detached(state.pendingTaskId)) {
+    state.pendingTaskId = null;
+    state.pendingTaskless = false;
   }
   // While a block runs the label follows the active task; otherwise the pick.
   const labelTaskId = state.activeBlock ? state.activeTaskId : state.selectedTaskId;
@@ -1462,7 +1465,9 @@ async function finishBlock(completed) {
   state.activeBlock = null;
   state.activeTaskId = null;
   state.touchedTaskIds = new Set();
-  state.selectedTaskId = null; // clear the list highlight when the block ends
+  // Keep the block's task selected so the next pomo (manual or auto) resumes it
+  // across the break; updateTimerControls detaches it once it's marked done.
+  state.selectedTaskId = block.task_id ?? null;
   if (!completed) {
     state.streakBlocks = 0;
     renderStreak();
@@ -1487,11 +1492,24 @@ async function completeBlockWithCredit({ nextBreak } = {}) {
   }
   const startedTaskless = block.task_id == null;
   const lastActive = state.activeTaskId || block.task_id;
-  const modalTaskIds = startedTaskless
-    ? todayCreditCandidates().map((task) => task.id)
-    : [...state.touchedTaskIds];
+  const touched = [...state.touchedTaskIds];
+  const todayIds = todayCreditCandidates().map((task) => task.id);
+  let modalTaskIds;
+  let creditableIds;
+  if (startedTaskless) {
+    // Scenario 1: every Today task is a creditable pick.
+    modalTaskIds = todayIds;
+    creditableIds = null;
+  } else {
+    // Scenario 2: the assigned/touched tasks credit the block; the rest of Today
+    // rides along as label-only context (note text, no block reassignment).
+    const extras = todayIds.filter((id) => !state.touchedTaskIds.has(id));
+    modalTaskIds = [...touched, ...extras];
+    creditableIds = new Set(touched);
+  }
   const { checked, note } = await openCreditModal(modalTaskIds, {
-    checkedIds: startedTaskless ? new Set(state.touchedTaskIds) : null,
+    checkedIds: new Set(state.touchedTaskIds),
+    creditableIds,
     titleKey: startedTaskless ? "credit.titleUntethered" : "credit.title",
   });
   try {
@@ -1506,10 +1524,12 @@ async function completeBlockWithCredit({ nextBreak } = {}) {
   state.activeBlock = null;
   state.activeTaskId = null;
   state.touchedTaskIds = new Set();
-  state.selectedTaskId = null; // clear the list highlight when the block ends
+  // Keep the last active task selected so the next pomo resumes it across the
+  // break; updateTimerControls detaches it once it's marked done.
+  state.selectedTaskId = lastActive ?? null;
   state.streakBlocks += 1;
   state.pendingTaskId = lastActive;
-  state.pendingTaskless = startedTaskless;
+  state.pendingTaskless = lastActive == null;
   state.pendingDuration = block.durationMin;
   renderStreak();
   await syncNow();
@@ -1527,7 +1547,7 @@ async function completeBlockWithCredit({ nextBreak } = {}) {
 
 function openCreditModal(
   taskIds,
-  { checkedIds = null, titleKey = "credit.title" } = {},
+  { checkedIds = null, creditableIds = null, titleKey = "credit.title" } = {},
 ) {
   return new Promise((resolve) => {
     const tasks = state.dashboard ? state.dashboard.tasks : [];
@@ -1535,13 +1555,24 @@ function openCreditModal(
       const task = tasks.find((tk) => tk.id === id);
       return task ? task.name : `#${id}`;
     };
+    const isCreditable = (id) => creditableIds === null || creditableIds.has(id);
     els.creditTitle.textContent = t(titleKey);
     els.creditConfirm.textContent = t("credit.confirm");
     els.creditRecordLabel.textContent = t("credit.record");
     els.creditList.innerHTML = "";
+    let dividerShown = false;
     taskIds.forEach((id) => {
+      // First non-creditable task opens the label-only group (note text only,
+      // never credited a block); mark it with a one-time divider caption.
+      if (!isCreditable(id) && !dividerShown) {
+        const sep = document.createElement("li");
+        sep.className = "credit-divider";
+        sep.textContent = t("credit.alsoToday");
+        els.creditList.appendChild(sep);
+        dividerShown = true;
+      }
       const li = document.createElement("li");
-      li.className = "credit-row";
+      li.className = isCreditable(id) ? "credit-row" : "credit-row label-only";
       const label = document.createElement("label");
       const cb = document.createElement("input");
       cb.type = "checkbox";
@@ -1575,9 +1606,12 @@ function openCreditModal(
 
     els.creditModal.hidden = false;
     const onConfirm = () => {
-      const checked = [...els.creditList.querySelectorAll("input:checked")].map(
-        (cb) => Number(cb.dataset.id),
-      );
+      // Note keeps every checked name; only creditable ids are sent to /credit so
+      // label-only Today tasks can't reassign the block or add a pomo.
+      const allChecked = [
+        ...els.creditList.querySelectorAll("input:checked"),
+      ].map((cb) => Number(cb.dataset.id));
+      const checked = allChecked.filter(isCreditable);
       const note = els.creditRecord.value.trim();
       els.creditModal.hidden = true;
       els.creditConfirm.removeEventListener("click", onConfirm);

@@ -38,6 +38,7 @@ const MESSAGES = {
     "credit.confirm": "Confirm",
     "credit.record": "What did you work on?",
     "credit.titleUntethered": "Block done — what did you finish?",
+    "credit.alsoToday": "Also worked on today (no credit)",
     "streak.toLongRest": "{n} to long rest",
 
     "today.title": "Today",
@@ -188,6 +189,7 @@ const MESSAGES = {
     "credit.confirm": "确认",
     "credit.record": "你完成了什么？",
     "credit.titleUntethered": "番茄完成 — 你完成了什么？",
+    "credit.alsoToday": "今天也做了（不计入）",
     "streak.toLongRest": "还差 {n} 到长休息",
 
     "today.title": "今天",

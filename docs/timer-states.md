@@ -4,8 +4,13 @@ The timer runs **stateless blocks**. A block is one timer run (e.g. 30
 min); it is *not* bound to a single task. You start a block with an
 initial task, and while it runs you can switch the active task or finish
 todos — the timer keeps going and the block remembers every task you
-touched. When the timer completes, a checklist lets you choose which
-touched tasks to credit; each checked task earns **+1 done block**.
+touched. When the timer completes, a checklist lets you confirm what the
+pomo counts toward.
+
+**One finished pomo = one counted block, attributed to one task.** The
+checklist's *first checked task* becomes the block's task (`block.task_id`);
+every checked name is folded into the block's **record/note**. Checking
+several tasks does **not** create several blocks — extras are note text only.
 Aborting before the timer ends credits nobody.
 
 Source of truth: `frontend/app.js`.
@@ -63,7 +68,7 @@ stateDiagram-v2
     Running --> Running: Restart<br/>reset countdown to full, same block
 
     Running --> Credit: complete (timer hits 0)
-    Credit --> Rest: Confirm checklist<br/>each checked task +1 block, streak++
+    Credit --> Rest: Confirm checklist<br/>pomo credited to first checked task, streak++
 
     Running --> Rest: Skip / Esc (abort)<br/>no credit
     Paused --> Rest: Skip / Esc (abort)<br/>no credit
@@ -97,8 +102,8 @@ flowchart TD
     During -- "remove a touched chip (non-active)" --> Drop["delete from touchedTaskIds<br/>(won't be credited)"]
     Drop --> During
 
-    During -- "complete (timer 0)" --> Prompt["Checklist of touchedTaskIds<br/>(all checked by default)"]
-    Prompt --> Confirm["Confirm: each checked task<br/>gets a completed block (+1 blocks_done)"]
+    During -- "complete (timer 0)" --> Prompt["Credit checklist<br/>(assigned/touched pre-checked)"]
+    Prompt --> Confirm["Confirm: pomo (1 block) credited to<br/>the first checked task; all checked names -> note"]
 
     During -- "skip / Esc / abort" --> Abort["discard touchedTaskIds<br/>credit nobody"]
 ```
@@ -107,15 +112,46 @@ Key rules:
 
 - **No credit until completion.** Switching and finishing todos during a
   block never grant blocks; they only build the touched set.
-- **Completion checklist.** On a natural finish you pick which touched
-  tasks to credit (default: all). Each checked task earns one completed
-  block; the streak bumps once for the block (not per task). For a block
-  **started taskless**, the checklist instead lists Today tasks; any you
-  touched mid-block are pre-checked.
+- **Completion checklist.** A natural finish produces **one** counted block,
+  credited to the first checked task; all checked names go into the record.
+  The streak bumps once for the block. The checklist shape depends on how the
+  block started — see *Finish-time credit scenarios* below.
 - **Abort earns nothing.** Skip, Esc, or any abort before the timer ends
   discards the touched set.
 - **Restart** re-runs the same block from its full duration without
   losing the block or its touched tasks.
+
+## Finish-time credit scenarios
+
+The credit modal composes differently depending on whether the block was
+started with a task. Both yield exactly one counted block.
+
+### Scenario 1 — unassigned pomo (`block.task_id == null`)
+
+- Lists **all Today tasks** (bucket=today, not done) to pick from.
+- Any task assigned mid-block is pre-checked.
+- The first checked task becomes the pomo's task; all checked names → note.
+- Checking nothing → pomo recorded taskless, note still saved.
+
+### Scenario 2 — assigned pomo (`block.task_id != null`)
+
+- Shows the **assigned + mid-block-touched** tasks first, pre-checked — the
+  *creditable* group that owns the pomo.
+- A divider ("also worked on today — no credit") separates a *label-only*
+  group: **every other Today task**, unchecked.
+- Ticking a label-only task only appends its name to the note. It never
+  reassigns the block and never adds a pomo; the pomo stays on the assigned
+  task. (Client-side: label-only ids are filtered out before `POST /credit`,
+  so they can't become `task_ids[0]`.)
+
+### Feature checklist
+
+- [ ] Unassigned finish → all Today tasks listed, touched pre-checked.
+- [ ] Assigned finish → assigned/touched checked above the divider.
+- [ ] Assigned finish → other Today tasks listed below, label-only, unchecked.
+- [ ] Label-only ticks enrich the note only — no reassignment, no extra pomo.
+- [ ] Any confirm produces exactly one counted block (first creditable check).
+- [ ] Abort/skip credits nothing.
 
 ## UI signals
 
@@ -131,8 +167,9 @@ Key rules:
   has an ✕ to drop that task from the block before it ends; the active
   task has no ✕ (it is running).
 - The active task's row stays highlighted; switching moves the highlight.
-- **Completion checklist** is a small modal: the touched tasks, all
-  checked, with a Confirm button.
+- **Completion checklist** is a small modal whose rows depend on the finish
+  scenario above: an assigned pomo shows the creditable tasks then a divider
+  and the label-only Today tasks; an unassigned pomo lists Today tasks to pick.
 
 ## Counting invariants (backend)
 
@@ -146,8 +183,12 @@ Unchanged in `backend/repository.py`:
 ## Changelog
 
 - Stateless block: switch the active task mid-block (with a confirm), the
-  block tracks every touched task, and a completion checklist credits each
-  checked task (+1 block). Backend: `POST /blocks/{id}/credit`.
+  block tracks every touched task, and a completion checklist credits the
+  pomo to the first checked task (one block), folding all checked names into
+  the record. Backend: `POST /blocks/{id}/credit`.
+- Finish-time credit split into two scenarios: an unassigned pomo lists all
+  Today tasks to pick; an assigned pomo shows the assigned/touched tasks plus
+  a label-only group of the remaining Today tasks (note only, no reassignment).
 - Restart re-runs the same block from full (no new block, touched kept).
 - Idle task selection is a toggle (click to select, click again to
   deselect); no task is auto-selected and START is disabled until one is

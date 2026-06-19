@@ -298,10 +298,19 @@ export async function timerSuite() {
   const c8 = bd(C), a8 = bd(A), b8 = bd(B); // baselines: VAL8 asserts deltas
   await expire();
   check("VAL8: credit modal shown", el("#credit-modal").hidden === false);
-  check("VAL8: checklist lists touched 2", document.querySelectorAll("#credit-list input").length === 2);
+  // Non-taskless completion: the touched tasks are the creditable, pre-checked
+  // rows; other Today tasks ride along as label-only ("also today"), unchecked.
+  const v8creditable = [...document.querySelectorAll("#credit-list li")].filter(
+    (li) => li.querySelector("input") && !li.classList.contains("label-only"),
+  );
+  check("VAL8: 2 creditable (touched) rows", v8creditable.length === 2);
   check(
-    "VAL8: all boxes checked by default",
-    [...document.querySelectorAll("#credit-list input")].every((c) => c.checked),
+    "VAL8: touched boxes checked by default",
+    v8creditable.every((li) => li.querySelector("input").checked),
+  );
+  check(
+    "VAL8: label-only extras start unchecked",
+    [...document.querySelectorAll("#credit-list li.label-only input")].every((c) => !c.checked),
   );
   await confirmCredit([aId]); // drop A
   check("VAL8: C credited +1", bd(C) === c8 + 1);
@@ -320,8 +329,14 @@ export async function timerSuite() {
   await abortEsc();
   check("VAL9: Esc clears block", state.activeBlock === null);
   check("VAL9: Esc no credit", bd(A) === aBeforeEsc);
-  check("VAL9: exit clears list highlight", document.querySelectorAll(".task-item.active").length === 0);
-  check("VAL9: exit clears timer label", el("#current-task").textContent === t("timer.noTask"));
+  // Carry: an un-finished task stays selected after exit so the next pomo resumes
+  // it; it only detaches once the task is marked done.
+  check("VAL9: exit keeps the task selected", state.selectedTaskId === aId);
+  check(
+    "VAL9: exit keeps the row highlighted",
+    document.querySelectorAll(".task-item.active").length === 1 && row(aId).classList.contains("active"),
+  );
+  check("VAL9: exit keeps the timer label on the task", el("#current-task").textContent === A);
 
   el('.timer-tab[data-mode="pomodoro"]').click();
   await sleep(150);
