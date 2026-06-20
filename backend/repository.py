@@ -184,6 +184,12 @@ class Repository:
         return result
 
     def create_block(self, task_id: int | None, duration_min: int) -> dict:
+        # Invariant: at most one open block. Starting a new focus abandons any
+        # block left running (a failed end, a second tab/device) so two pomos
+        # can never be credited out of the same window.
+        self._session.query(Block).filter(Block.ended_at.is_(None)).update(
+            {Block.ended_at: utcnow()}, synchronize_session=False
+        )
         block = Block(task_id=task_id, duration_min=duration_min)
         self._session.add(block)
         self._session.flush()
@@ -209,7 +215,7 @@ class Repository:
 
     def end_block(self, block_id: int, completed: bool) -> dict | None:
         block = self._session.get(Block, block_id)
-        if block is None:
+        if block is None or block.ended_at is not None:
             return None
         block.ended_at = utcnow()
         block.completed = completed
@@ -249,7 +255,7 @@ class Repository:
         self, block_id: int, task_ids: list[int], note: str = ""
     ) -> int | None:
         block = self._session.get(Block, block_id)
-        if block is None:
+        if block is None or block.ended_at is not None:
             return None
         now = utcnow()
         block.ended_at = now
