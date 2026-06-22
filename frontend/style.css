@@ -15,6 +15,7 @@ html {
   --ink-strong: #1f2a22;
   --muted: #6f6a62;
   --line: #ececea;
+  --line-strong: #dfdcd6;
   /* Type scale (relative to the deliberate 14px root, commit f695c9d). */
   --fs-xs: 0.78rem;
   --fs-sm: 0.86rem;
@@ -186,15 +187,15 @@ main {
 
 .panel h2 {
   margin: 0 0 0.9rem;
-  font-size: 0.85rem;
-  font-weight: 700;
+  font-size: var(--fs-md);
+  font-weight: 600;
   color: var(--ink-strong);
 }
 
 .panel h3 {
   margin: 1.25rem 0 0.7rem;
-  font-size: 0.8rem;
-  font-weight: 700;
+  font-size: 1rem;
+  font-weight: 600;
   color: var(--ink-strong);
 }
 
@@ -574,7 +575,7 @@ details[open] > summary.bucket-head::before {
   align-items: center;
   gap: 0.7rem;
   padding: 0.55rem 0;
-  border-top: 1px solid var(--line);
+  border-top: 1px solid var(--line-strong);
   font-size: 0.92rem;
 }
 
@@ -613,7 +614,7 @@ details[open] > summary.bucket-head::before {
   flex: none;
   padding: 0.1rem 0.5rem;
   border-radius: 999px;
-  font-size: 0.68rem;
+  font-size: 0.78rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -926,7 +927,7 @@ details[open] > summary.bucket-head::before {
   gap: 0.9rem;
   align-items: flex-start;
   padding: 0.55rem 0;
-  border-top: 1px solid var(--line);
+  border-top: 1px solid var(--line-strong);
   font-size: 0.92rem;
 }
 
@@ -937,7 +938,7 @@ details[open] > summary.bucket-head::before {
 .log-time {
   flex: none;
   width: 46px;
-  font-size: 0.72rem;
+  font-size: 0.78rem;
   line-height: 1.3;
   color: var(--muted);
   font-variant-numeric: tabular-nums;
@@ -956,8 +957,8 @@ details[open] > summary.bucket-head::before {
 }
 
 .log-tag {
-  color: var(--blue);
-  font-weight: 700;
+  color: var(--muted);
+  font-weight: 600;
 }
 
 .log-count {
@@ -1055,19 +1056,18 @@ details[open] > summary.bucket-head::before {
   white-space: nowrap;
 }
 
-/* Fixed-width tag column so #tags line up across rows. */
+/* Tags wrap instead of clipping; capped width keeps rows tidy. */
 .task-tags {
-  flex: none;
-  width: 96px;
+  flex: 0 1 auto;
+  max-width: 11rem;
   display: flex;
+  flex-wrap: wrap;
   gap: 0.3rem;
-  overflow: hidden;
-  white-space: nowrap;
 }
 
 .tag-chip {
-  background: #eef4fb;
-  color: #2f6aa3;
+  background: #f2efe9;
+  color: var(--muted);
   padding: 0.1rem 0.45rem;
   border-radius: 6px;
   font-size: 0.82rem;
@@ -1185,7 +1185,7 @@ details[open] > summary.bucket-head::before {
 
 .log-item .row-delete,
 .history-todo .row-delete {
-  opacity: 0.35;
+  opacity: 0.5;
 }
 
 .log-item:hover .row-delete,
@@ -1364,7 +1364,7 @@ details[open] > summary.bucket-head::before {
 .mini-cards {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 14px;
+  gap: 1rem;
 }
 
 .mini-card {
@@ -1428,7 +1428,7 @@ button.mini-card:active {
 }
 
 .mini-sub {
-  font-size: 0.7rem;
+  font-size: 0.78rem;
   color: var(--muted);
   margin-top: 0.05rem;
   font-weight: 600;
@@ -1469,7 +1469,7 @@ button.mini-card:active {
 .bar-val {
   flex: 1;
   text-align: center;
-  font-size: 0.6rem;
+  font-size: 0.78rem;
   font-weight: 600;
   color: var(--ink-strong);
 }
@@ -1486,7 +1486,7 @@ button.mini-card:active {
 .mini-week-day {
   flex: 1;
   text-align: center;
-  font-size: 0.62rem;
+  font-size: 0.78rem;
   color: var(--muted);
 }
 
@@ -1543,7 +1543,7 @@ button.mini-card:active {
 .mini-value {
   font-size: 2.25rem;
   font-weight: 700;
-  color: var(--accent, var(--tomato));
+  color: var(--ink-strong);
   font-variant-numeric: tabular-nums;
   line-height: 1;
   letter-spacing: -0.5px;
@@ -1760,7 +1760,7 @@ button.mini-card:active {
   color: var(--muted);
 }
 
-.settings-group {
+.settings-form .settings-group {
   grid-column: 1 / -1;
   margin: 0.75rem 0 0;
   font-size: 0.7rem;
