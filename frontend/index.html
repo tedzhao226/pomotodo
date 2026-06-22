@@ -49,6 +49,7 @@
 
           <section class="panel" id="today-panel">
             <h2><span data-i18n="today.title">Today</span> <span id="today-count" class="today-count"></span></h2>
+            <p id="signoff-countdown" class="signoff-countdown" hidden></p>
             <ul id="today-log" class="today-log"></ul>
           </section>
         </div>
@@ -212,6 +213,10 @@
           <label><span data-i18n="settings.dailyGoal">Daily goal (pomos)</span>
             <input type="number" min="1" id="set-goal">
             <small class="settings-hint" data-i18n="settings.dailyGoalHint">Pomodoros you aim to finish each day.</small>
+          </label>
+          <label><span data-i18n="settings.signOff">Sign-off time</span>
+            <input type="time" id="set-signoff">
+            <small class="settings-hint" data-i18n="settings.signOffHint">When you want to stop for the day. Blank to hide.</small>
           </label>
           <label><span data-i18n="settings.language">Language</span>
             <select id="set-lang">

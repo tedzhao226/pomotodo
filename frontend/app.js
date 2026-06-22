@@ -12,6 +12,7 @@ const DEFAULT_SETTINGS = {
   autoStartRest: false,
   soundEnabled: true,
   tickEnabled: false,
+  signOffTime: "18:00",
 };
 
 const PALETTE = ["#ff6f61", "#8ed1a0", "#f0a857", "#6aa9e0", "#f6cf6b", "#f4978e"];
@@ -131,6 +132,8 @@ const els = {
   worktimeLegend: document.getElementById("worktime-legend"),
   settingsForm: document.getElementById("settings-form"),
   setGoal: document.getElementById("set-goal"),
+  setSignoff: document.getElementById("set-signoff"),
+  signoffLine: document.getElementById("signoff-countdown"),
   setDuration: document.getElementById("set-duration"),
   setShortRest: document.getElementById("set-short-rest"),
   setLongRest: document.getElementById("set-long-rest"),
@@ -1080,6 +1083,20 @@ function renderTodayLog() {
         })
         .join("")
     : `<li class="log-empty">${t("today.empty")}</li>`;
+  renderSignoff();
+}
+
+function renderSignoff() {
+  const r = signOffRemaining(new Date(), state.settings.signOffTime);
+  if (!r) {
+    els.signoffLine.hidden = true;
+    return;
+  }
+  const time = state.settings.signOffTime;
+  els.signoffLine.textContent = r.past
+    ? t("today.signoffPast", { time })
+    : t("today.signoff", { h: r.hours, m: r.minutes, time });
+  els.signoffLine.hidden = false;
 }
 
 function renderMiniCards() {
@@ -1730,6 +1747,7 @@ function applySettingsToControls() {
     state.remainingSeconds = timerDurationSeconds();
   }
   els.setGoal.value = state.settings.dailyGoal;
+  els.setSignoff.value = state.settings.signOffTime;
   els.setDuration.value = String(state.settings.defaultDuration);
   els.setShortRest.value = state.settings.shortRest;
   els.setLongRest.value = state.settings.longRest;
@@ -1932,6 +1950,7 @@ els.settingsForm.addEventListener("submit", (event) => {
     autoStartRest: els.setAutorest.checked,
     soundEnabled: els.setSound.checked,
     tickEnabled: els.setTick.checked,
+    signOffTime: els.setSignoff.value,
   };
   saveSettings(state.settings);
   applySettingsToControls();
@@ -2253,3 +2272,4 @@ applySettingsToControls();
 applyRoute();
 syncNow();
 setInterval(scheduleSync, SYNC_MS);
+setInterval(renderSignoff, 60000);

@@ -44,6 +44,8 @@ const MESSAGES = {
     "today.title": "Today",
     "today.finished": "· Finished {n} {unit}",
     "today.empty": "No finished pomos today.",
+    "today.signoff": "{h}h {m}m until sign-off · {time}",
+    "today.signoffPast": "Past sign-off · {time}",
 
     "todos.title": "Todos",
     "todos.clearCompleted": "Clear completed",
@@ -86,6 +88,8 @@ const MESSAGES = {
 
     "settings.title": "Settings",
     "settings.dailyGoal": "Daily goal (pomos)",
+    "settings.signOff": "Sign-off time",
+    "settings.signOffHint": "When you want to stop for the day. Blank to hide.",
     "settings.defaultDuration": "Default duration (min)",
     "settings.shortRest": "Short rest (min)",
     "settings.longRest": "Long rest (min)",
@@ -195,6 +199,8 @@ const MESSAGES = {
     "today.title": "今天",
     "today.finished": "· 完成 {n} 个番茄",
     "today.empty": "今天还没有完成的番茄。",
+    "today.signoff": "距收工还有 {h}h {m}m · {time}",
+    "today.signoffPast": "已过收工时间 · {time}",
 
     "todos.title": "待办",
     "todos.clearCompleted": "清除已完成",
@@ -237,6 +243,8 @@ const MESSAGES = {
 
     "settings.title": "设置",
     "settings.dailyGoal": "每日目标（番茄）",
+    "settings.signOff": "收工时间",
+    "settings.signOffHint": "你想结束一天的时间。留空则隐藏。",
     "settings.defaultDuration": "默认时长（分钟）",
     "settings.shortRest": "短休息（分钟）",
     "settings.longRest": "长休息（分钟）",

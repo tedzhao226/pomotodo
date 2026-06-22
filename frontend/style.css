@@ -371,7 +371,17 @@ summary.bucket-head {
   list-style: none;
   display: flex;
   align-items: center;
-  gap: 0.35rem;
+  gap: 0.4rem;
+  width: fit-content;
+  padding: 0.15rem 0.4rem 0.15rem 0.25rem;
+  margin-left: -0.25rem;
+  border-radius: 6px;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+summary.bucket-head:hover {
+  color: var(--ink);
+  background: var(--line);
 }
 
 summary.bucket-head::-webkit-details-marker {
@@ -380,7 +390,9 @@ summary.bucket-head::-webkit-details-marker {
 
 summary.bucket-head::before {
   content: "▸";
-  font-size: 0.7em;
+  font-size: 1.05em;
+  line-height: 1;
+  color: var(--tomato);
   transition: transform 0.15s ease;
 }
 
@@ -913,6 +925,12 @@ details[open] > summary.bucket-head::before {
 .today-count {
   font-size: 0.78rem;
   font-weight: 500;
+  color: var(--muted);
+}
+
+.signoff-countdown {
+  margin: 0 0 0.5rem;
+  font-size: var(--fs-sm);
   color: var(--muted);
 }
 

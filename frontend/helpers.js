@@ -70,6 +70,18 @@ function markdownToHtml(src) {
   return out.join("");
 }
 
+function signOffRemaining(now, hhmm) {
+  if (typeof hhmm !== "string") return null;
+  const m = /^(\d{1,2}):(\d{2})$/.exec(hhmm.trim());
+  if (!m) return null;
+  const h = Number(m[1]), min = Number(m[2]);
+  if (h > 23 || min > 59) return null;
+  const target = new Date(now.getFullYear(), now.getMonth(), now.getDate(), h, min, 0, 0);
+  if (now >= target) return { past: true, hours: 0, minutes: 0 };
+  const diffMin = Math.floor((target - now) / 60000);
+  return { past: false, hours: Math.floor(diffMin / 60), minutes: diffMin % 60 };
+}
+
 if (typeof module !== "undefined" && module.exports) {
-  module.exports = { formatTime, escapeHtml, markdownToHtml };
+  module.exports = { formatTime, escapeHtml, markdownToHtml, signOffRemaining };
 }
