@@ -13,3 +13,6 @@ playwright-report/
 .last-run.json
 /blob-report/
 playwright/.cache/
+
+# conductor run evidence
+specs/**/runs/
