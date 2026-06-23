@@ -1048,16 +1048,20 @@ function renderTodayLog() {
 
   const groups = new Map();
   for (const b of today) {
-    let g = groups.get(b.task_id);
+    const name = b.task_name || b.note;
+    // Taskless (custom-named) pomos share task_id=null; key on the name so
+    // distinctly-named ones don't collapse into one group.
+    const key = b.task_id ?? `note:${name}`;
+    let g = groups.get(key);
     if (!g) {
       g = {
-        name: b.task_name,
+        name,
         tags: b.tags,
         count: 0,
         first: b.started_at,
         last: b.ended_at || b.started_at,
       };
-      groups.set(b.task_id, g);
+      groups.set(key, g);
     }
     g.count += 1;
     if (b.started_at < g.first) {
