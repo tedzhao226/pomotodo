@@ -22,7 +22,7 @@ services:
       db:
         condition: service_healthy
     ports:
-      # :80 is now fronted by the shared staging-local Caddy proxy (host: staging-local); 8001 kept for direct access.
+      # :80 is fronted by the shared local-proxy Caddy proxy (../local-proxy); 8001 kept for direct access.
       - "8001:8000"
     networks:            # default = reach db; proxy = reachable by the Caddy proxy
       - default
