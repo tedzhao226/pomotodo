@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -184,12 +184,22 @@ class Repository:
         return result
 
     def create_block(self, task_id: int | None, duration_min: int) -> dict:
-        # Invariant: at most one open block. Starting a new focus abandons any
-        # block left running (a failed end, a second tab/device) so two pomos
-        # can never be credited out of the same window.
-        self._session.query(Block).filter(Block.ended_at.is_(None)).update(
-            {Block.ended_at: utcnow()}, synchronize_session=False
-        )
+        # Invariant: at most one open block. Starting a new focus closes any block
+        # left running (a failed end, a second tab/device) so two pomos can never
+        # be credited out of the same window. A leftover that already ran its full
+        # duration is a finished pomo only awaiting credit — keep it (credit its
+        # anchor) instead of aborting, so a finished pomo is never silently dropped.
+        now = utcnow()
+        for leftover in (
+            self._session.query(Block).filter(Block.ended_at.is_(None)).all()
+        ):
+            leftover.ended_at = now
+            # sqlite returns started_at tz-naive; treat stored times as UTC.
+            started = leftover.started_at
+            if started.tzinfo is None:
+                started = started.replace(tzinfo=timezone.utc)
+            elapsed = (now - started).total_seconds()
+            leftover.completed = elapsed >= leftover.duration_min * 60
         block = Block(task_id=task_id, duration_min=duration_min)
         self._session.add(block)
         self._session.flush()

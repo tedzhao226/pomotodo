@@ -1,8 +1,10 @@
+from datetime import timedelta
+
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from backend.models import Base
+from backend.models import Base, Block, utcnow
 from backend.repository import Repository
 from backend.service import NotFoundError, Service
 
@@ -118,3 +120,25 @@ def test_start_block_closes_previous_open_block(service):
     with pytest.raises(NotFoundError):
         service.credit_block(first["id"], [a["id"]], "stale")
     assert service.get_stats()["all_time_pomos"] == 0
+
+
+def _backdate(service, block_id, minutes):
+    block = service._repo._session.get(Block, block_id)
+    block.started_at = utcnow() - timedelta(minutes=minutes)
+    service._repo._session.flush()
+
+
+def test_start_block_keeps_finished_leftover_credited(service):
+    # VAL-BUG1-001: a leftover block that already ran its full duration is a
+    # finished pomo only awaiting credit. The single-open-block sweep must keep it
+    # (credit its anchor), not silently abort it, when a new pomo starts.
+    a = service.create_task_from_raw("task A")
+    b = service.create_task_from_raw("task B")
+    first = service.start_block(a["id"], 25)
+    _backdate(service, first["id"], 26)  # past its 25-min duration
+
+    service.start_block(b["id"], 25)
+
+    pomos = service.get_history()["pomos"]
+    assert [p["task_name"] for p in pomos] == ["task A"]
+    assert service.get_stats()["all_time_pomos"] == 1

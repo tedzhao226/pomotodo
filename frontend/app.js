@@ -1048,7 +1048,7 @@ function renderTodayLog() {
 
   const groups = new Map();
   for (const b of today) {
-    const name = b.task_name || b.note;
+    const name = b.note || b.task_name;
     // Taskless (custom-named) pomos share task_id=null; key on the name so
     // distinctly-named ones don't collapse into one group.
     const key = b.task_id ?? `note:${name}`;
@@ -1529,19 +1529,24 @@ async function completeBlockWithCredit({ nextBreak } = {}) {
     modalTaskIds = [...touched, ...extras];
     creditableIds = new Set(touched);
   }
-  const { checked, note } = await openCreditModal(modalTaskIds, {
-    checkedIds: new Set(state.touchedTaskIds),
-    creditableIds,
-    titleKey: startedTaskless ? "credit.titleUntethered" : "credit.title",
-  });
-  try {
-    await api(`/api/blocks/${block.id}/credit`, {
-      method: "POST",
-      body: JSON.stringify({ task_ids: checked, note }),
+  // Retry until the credit lands: a failed POST must not strand the finished
+  // block (the next Start would clobber it). Keep state.activeBlock and re-open
+  // the modal so the user can confirm again.
+  for (;;) {
+    const { checked, note } = await openCreditModal(modalTaskIds, {
+      checkedIds: new Set(state.touchedTaskIds),
+      creditableIds,
+      titleKey: startedTaskless ? "credit.titleUntethered" : "credit.title",
     });
-  } catch (error) {
-    els.timerMode.textContent = t("err.endBlock", { msg: error.message });
-    return;
+    try {
+      await api(`/api/blocks/${block.id}/credit`, {
+        method: "POST",
+        body: JSON.stringify({ task_ids: checked, note }),
+      });
+      break;
+    } catch (error) {
+      els.timerMode.textContent = t("err.endBlock", { msg: error.message });
+    }
   }
   state.activeBlock = null;
   state.activeTaskId = null;
