@@ -12,6 +12,7 @@ const DEFAULT_SETTINGS = {
   autoStartRest: false,
   soundEnabled: true,
   tickEnabled: false,
+  signOffTime: "18:00",
 };
 
 const PALETTE = ["#ff6f61", "#8ed1a0", "#f0a857", "#6aa9e0", "#f6cf6b", "#f4978e"];
@@ -131,6 +132,8 @@ const els = {
   worktimeLegend: document.getElementById("worktime-legend"),
   settingsForm: document.getElementById("settings-form"),
   setGoal: document.getElementById("set-goal"),
+  setSignoff: document.getElementById("set-signoff"),
+  signoffLine: document.getElementById("signoff-countdown"),
   setDuration: document.getElementById("set-duration"),
   setShortRest: document.getElementById("set-short-rest"),
   setLongRest: document.getElementById("set-long-rest"),
@@ -1045,16 +1048,20 @@ function renderTodayLog() {
 
   const groups = new Map();
   for (const b of today) {
-    let g = groups.get(b.task_id);
+    const name = b.note || b.task_name;
+    // Taskless (custom-named) pomos share task_id=null; key on the name so
+    // distinctly-named ones don't collapse into one group.
+    const key = b.task_id ?? `note:${name}`;
+    let g = groups.get(key);
     if (!g) {
       g = {
-        name: b.task_name,
+        name,
         tags: b.tags,
         count: 0,
         first: b.started_at,
         last: b.ended_at || b.started_at,
       };
-      groups.set(b.task_id, g);
+      groups.set(key, g);
     }
     g.count += 1;
     if (b.started_at < g.first) {
@@ -1080,6 +1087,20 @@ function renderTodayLog() {
         })
         .join("")
     : `<li class="log-empty">${t("today.empty")}</li>`;
+  renderSignoff();
+}
+
+function renderSignoff() {
+  const r = signOffRemaining(new Date(), state.settings.signOffTime);
+  if (!r) {
+    els.signoffLine.hidden = true;
+    return;
+  }
+  const time = state.settings.signOffTime;
+  els.signoffLine.textContent = r.past
+    ? t("today.signoffPast", { time })
+    : t("today.signoff", { h: r.hours, m: r.minutes, time });
+  els.signoffLine.hidden = false;
 }
 
 function renderMiniCards() {
@@ -1508,19 +1529,24 @@ async function completeBlockWithCredit({ nextBreak } = {}) {
     modalTaskIds = [...touched, ...extras];
     creditableIds = new Set(touched);
   }
-  const { checked, note } = await openCreditModal(modalTaskIds, {
-    checkedIds: new Set(state.touchedTaskIds),
-    creditableIds,
-    titleKey: startedTaskless ? "credit.titleUntethered" : "credit.title",
-  });
-  try {
-    await api(`/api/blocks/${block.id}/credit`, {
-      method: "POST",
-      body: JSON.stringify({ task_ids: checked, note }),
+  // Retry until the credit lands: a failed POST must not strand the finished
+  // block (the next Start would clobber it). Keep state.activeBlock and re-open
+  // the modal so the user can confirm again.
+  for (;;) {
+    const { checked, note } = await openCreditModal(modalTaskIds, {
+      checkedIds: new Set(state.touchedTaskIds),
+      creditableIds,
+      titleKey: startedTaskless ? "credit.titleUntethered" : "credit.title",
     });
-  } catch (error) {
-    els.timerMode.textContent = t("err.endBlock", { msg: error.message });
-    return;
+    try {
+      await api(`/api/blocks/${block.id}/credit`, {
+        method: "POST",
+        body: JSON.stringify({ task_ids: checked, note }),
+      });
+      break;
+    } catch (error) {
+      els.timerMode.textContent = t("err.endBlock", { msg: error.message });
+    }
   }
   state.activeBlock = null;
   state.activeTaskId = null;
@@ -1730,6 +1756,7 @@ function applySettingsToControls() {
     state.remainingSeconds = timerDurationSeconds();
   }
   els.setGoal.value = state.settings.dailyGoal;
+  els.setSignoff.value = state.settings.signOffTime;
   els.setDuration.value = String(state.settings.defaultDuration);
   els.setShortRest.value = state.settings.shortRest;
   els.setLongRest.value = state.settings.longRest;
@@ -1932,6 +1959,7 @@ els.settingsForm.addEventListener("submit", (event) => {
     autoStartRest: els.setAutorest.checked,
     soundEnabled: els.setSound.checked,
     tickEnabled: els.setTick.checked,
+    signOffTime: els.setSignoff.value,
   };
   saveSettings(state.settings);
   applySettingsToControls();
@@ -2253,3 +2281,4 @@ applySettingsToControls();
 applyRoute();
 syncNow();
 setInterval(scheduleSync, SYNC_MS);
+setInterval(renderSignoff, 60000);
