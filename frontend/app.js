@@ -41,7 +41,6 @@ const state = {
   running: false,
   onComplete: null,
   streakBlocks: 0,
-  pendingTaskId: null,
   pendingDuration: 30,
   pendingTaskless: false,
   selectedTag: null,
@@ -205,7 +204,9 @@ async function api(path, options = {}) {
   });
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
-    throw new Error(body.detail || response.statusText);
+    const error = new Error(body.detail || response.statusText);
+    error.status = response.status;
+    throw error;
   }
   if (response.status === 204) {
     return null;
@@ -321,6 +322,41 @@ function syncBreak() {
   }
 }
 
+// Persist the running pomodoro's timer state to its server block — the same
+// absolute-deadline model as syncBreak, so a reload rehydrates either a running
+// block (deadline_ms) or a paused one (paused_remaining_s). Transition-diffed off
+// lastBlockTimerKey so a re-render/tick never spams the network.
+let lastBlockTimerKey = "none";
+function syncBlockTimer() {
+  if (!state.rehydrated) {
+    return;
+  }
+  if (state.timerMode !== "pomodoro" || !state.activeBlock) {
+    lastBlockTimerKey = "none";
+    return;
+  }
+  let desired;
+  let body;
+  if (state.running && state.deadline) {
+    desired = `run|${state.activeBlock.id}|${state.deadline}`;
+    body = { deadline_ms: state.deadline, paused_remaining_s: null };
+  } else if (timerIsPaused()) {
+    desired = `pause|${state.activeBlock.id}|${state.remainingSeconds}`;
+    body = { deadline_ms: null, paused_remaining_s: state.remainingSeconds };
+  } else {
+    // Finished-awaiting-credit (remaining 0): nothing meaningful to persist.
+    return;
+  }
+  if (desired === lastBlockTimerKey) {
+    return;
+  }
+  lastBlockTimerKey = desired;
+  api(`/api/blocks/${state.activeBlock.id}/timer`, {
+    method: "PUT",
+    body: JSON.stringify(body),
+  }).catch(() => {});
+}
+
 function renderTimer() {
   const btn = els.timerBtn;
   const disabled = false;
@@ -343,6 +379,7 @@ function renderTimer() {
   els.timerDisplay.textContent = formatTime(state.remainingSeconds);
   updateTabTitle();
   syncBreak();
+  syncBlockTimer();
   btn.textContent = state.running ? "⏸" : "▶";
   btn.title = state.running ? t("timer.pauseCap") : t("timer.startCap");
   btn.disabled = state.running ? false : disabled;
@@ -453,11 +490,10 @@ function updateTimerControls() {
   // finished task drops off the next pomo (selection and pending carry alike).
   const detached = (id) =>
     id !== null && !tasks.some((task) => task.id === id && task.status !== "done");
+  // selectedTaskId carries the resume task across a block/break; clearing it also
+  // drops the taskless-resume flag so a finished task can't auto-start anything.
   if (detached(state.selectedTaskId)) {
     state.selectedTaskId = null;
-  }
-  if (detached(state.pendingTaskId)) {
-    state.pendingTaskId = null;
     state.pendingTaskless = false;
   }
   // While a block runs the label follows the active task; otherwise the pick.
@@ -770,17 +806,27 @@ function maybeRehydrateTimer() {
           : [];
     state.activeTaskId = rb.task_id;
     state.touchedTaskIds = new Set(touched);
-    state.pendingTaskId = rb.task_id;
     state.pendingTaskless = rb.task_id == null;
     state.selectedTaskId = rb.task_id;
-    const elapsedSec = (Date.now() - new Date(rb.started_at).getTime()) / 1000;
-    const remaining = Math.round(rb.duration_min * 60 - elapsedSec);
-    renderAll();
-    if (remaining <= 0) {
-      advanceAfterComplete();
+    if (rb.paused_remaining_s != null) {
+      // Restore a paused pomodoro: show it paused (no ticker) so resume picks up
+      // exactly where the user left off, even across a reload.
+      state.remainingSeconds = rb.paused_remaining_s;
+      state.running = false;
+      state.deadline = null;
+      lastBlockTimerKey = `pause|${rb.id}|${rb.paused_remaining_s}`;
+      renderAll();
       return;
     }
-    startCountdown(remaining, advanceAfterComplete);
+    // Running: rehydrate from the absolute deadline (back-compat: derive it from
+    // started_at+duration for blocks created before the deadline_ms column).
+    const deadlineMs =
+      rb.deadline_ms ??
+      new Date(rb.started_at).getTime() + rb.duration_min * 60_000;
+    state.deadline = deadlineMs;
+    lastBlockTimerKey = `run|${rb.id}|${deadlineMs}`;
+    renderAll();
+    resumeFromDeadline(deadlineMs);
     return;
   }
   // No server block claims the timer: resume a running break from the server.
@@ -801,9 +847,14 @@ function maybeRehydrateBreak() {
   state.deadline = saved.deadline;
   // Already on the server — don't let the restoring re-render re-PUT it.
   lastBreakKey = `${saved.mode}|${saved.deadline}`;
-  const remaining = Math.round(
-    (saved.deadline - Date.now()) / (1000 / TIME_SCALE),
-  );
+  resumeFromDeadline(saved.deadline);
+}
+
+// Resume a running timer (pomodoro or break) from an absolute server-side
+// deadline — the unified time model. Computes the real remaining (including the
+// reload gap) and either finishes immediately or restarts the countdown.
+function resumeFromDeadline(deadlineMs) {
+  const remaining = Math.round((deadlineMs - Date.now()) / (1000 / TIME_SCALE));
   if (remaining <= 0) {
     advanceAfterComplete();
     return;
@@ -1432,13 +1483,11 @@ async function startBlock(taskId, durationMin) {
   if (taskId == null) {
     state.activeTaskId = null;
     state.touchedTaskIds = new Set();
-    state.pendingTaskId = null;
     state.pendingTaskless = true;
     state.selectedTaskId = null;
   } else {
     state.activeTaskId = taskId;
     state.touchedTaskIds = new Set([taskId]);
-    state.pendingTaskId = taskId;
     state.pendingTaskless = false;
   }
   state.timerMode = "pomodoro";
@@ -1497,7 +1546,6 @@ async function finishBlock(completed) {
     return true;
   }
   state.streakBlocks += 1;
-  state.pendingTaskId = block.task_id;
   state.pendingTaskless = block.task_id == null;
   state.pendingDuration = block.durationMin;
   renderStreak();
@@ -1529,9 +1577,12 @@ async function completeBlockWithCredit({ nextBreak } = {}) {
     modalTaskIds = [...touched, ...extras];
     creditableIds = new Set(touched);
   }
-  // Retry until the credit lands: a failed POST must not strand the finished
-  // block (the next Start would clobber it). Keep state.activeBlock and re-open
-  // the modal so the user can confirm again.
+  // Retry until the credit lands: a transient POST failure (network/5xx) must not
+  // strand the finished block (the next Start would clobber it). Keep
+  // state.activeBlock and re-open the modal so the user can confirm again.
+  // A 404 is terminal, not transient: the block was already finalized server-side
+  // (a concurrent start swept it as aborted, or it was deleted), so it can never
+  // be credited — reset to idle instead of re-opening the modal forever.
   for (;;) {
     const { checked, note } = await openCreditModal(modalTaskIds, {
       checkedIds: new Set(state.touchedTaskIds),
@@ -1545,6 +1596,17 @@ async function completeBlockWithCredit({ nextBreak } = {}) {
       });
       break;
     } catch (error) {
+      if (error.status === 404) {
+        state.activeBlock = null;
+        state.activeTaskId = null;
+        state.touchedTaskIds = new Set();
+        state.selectedTaskId = lastActive ?? null;
+        await switchMode("pomodoro", { auto: false });
+        await syncNow();
+        // Set the message last — switchMode/syncNow re-render the mode label.
+        els.timerMode.textContent = t("err.creditGone");
+        return;
+      }
       els.timerMode.textContent = t("err.endBlock", { msg: error.message });
     }
   }
@@ -1555,7 +1617,6 @@ async function completeBlockWithCredit({ nextBreak } = {}) {
   // break; updateTimerControls detaches it once it's marked done.
   state.selectedTaskId = lastActive ?? null;
   state.streakBlocks += 1;
-  state.pendingTaskId = lastActive;
   state.pendingTaskless = lastActive == null;
   state.pendingDuration = block.durationMin;
   renderStreak();
@@ -1669,7 +1730,7 @@ async function switchMode(mode, { auto = false } = {}) {
     if (state.pendingTaskless) {
       await startBlock(null, state.pendingDuration);
     } else {
-      const taskId = state.pendingTaskId || state.selectedTaskId;
+      const taskId = state.selectedTaskId;
       if (taskId) {
         state.selectedTaskId = taskId;
         await startBlock(taskId, state.pendingDuration);
@@ -2074,7 +2135,6 @@ async function handleTaskClick(event) {
       }
       state.activeTaskId = taskId;
       state.touchedTaskIds.add(taskId);
-      state.pendingTaskId = taskId;
       // Persist the new active task + the full touched set so a reload restores
       // them (assign and switch alike).
       await syncBlockTasks();
@@ -2085,10 +2145,8 @@ async function handleTaskClick(event) {
     // Idle/rest: toggle — click the selected task again to deselect it.
     if (taskId === state.selectedTaskId) {
       state.selectedTaskId = null;
-      state.pendingTaskId = null;
     } else {
       state.selectedTaskId = taskId;
-      state.pendingTaskId = taskId;
     }
     updateTimerControls();
     renderTaskList();

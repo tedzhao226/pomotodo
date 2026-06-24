@@ -21,7 +21,7 @@ Source of truth: `frontend/app.js`.
 | --- | --- |
 | `mode` | `pomodoro` (work) \| `shortBreak` \| `longBreak` |
 | `running` | timer is counting down right now |
-| `remainingSeconds` / `deadline` | countdown value / absolute end timestamp |
+| `remainingSeconds` / `deadline` | countdown value / absolute end timestamp (epoch ms) |
 | `activeBlock` | the open work-block timer; `null` during rest or idle |
 | `selectedTaskId` | task picked (idle/rest) to start the next block; `null` = none |
 | `activeTaskId` | the task currently in focus inside the block |
@@ -32,6 +32,14 @@ A work block is **idle** (no block), **running** (`activeBlock` +
 `running`), or **paused** (`activeBlock`, `running=false`). Rest has no
 block and no task — it is just **idle** or **running**.
 
+**Time is reconstructed from an absolute deadline** — the unified model the
+timer and break share. A running timer persists `deadline_ms` (epoch ms) to
+the server (a block via `PUT /api/blocks/{id}/timer`; a break via
+`PUT /api/break`); a paused work block instead persists `paused_remaining_s`.
+On reload the client restores the real remaining (running blocks count the
+reload gap; paused blocks resume exactly where they were left), so neither a
+running nor a paused pomodoro is lost or fast-forwarded by a refresh.
+
 When idle, click a task to select it and click the same task again to
 **deselect**. No task is auto-selected; START is enabled even without a selection
 (and the timer shows the full duration with "No task selected"). A taskless
@@ -40,11 +48,11 @@ lists Today tasks to pick from.
 
 While a **taskless** block runs (no active task yet), clicking a task simply
 **assigns** it to the current block — no confirm, since nothing is being
-replaced. The assignment is **persisted** server-side (`POST
-/api/blocks/{id}/assign` sets `task_id`), so a page refresh rehydrates the
-block with that task. Once a block has an active task, clicking a different
-task is a **switch** and asks to confirm; switches stay client-only and do
-**not** survive a reload. Either way the task joins `touchedTaskIds`.
+replaced. Once a block has an active task, clicking a different task is a
+**switch** and asks to confirm. Either way the task joins `touchedTaskIds`.
+Both the active task and the full touched set are **persisted** server-side
+(`PUT /api/blocks/{id}/tasks`) on every change, so a reload rehydrates the
+block with its active task and the whole completion checklist.
 
 ## Work-block state machine
 
@@ -191,13 +199,31 @@ Unchanged in `backend/repository.py`:
   a label-only group of the remaining Today tasks (note only, no reassignment).
 - Restart re-runs the same block from full (no new block, touched kept).
 - Idle task selection is a toggle (click to select, click again to
-  deselect); no task is auto-selected and START is disabled until one is
-  picked.
+  deselect); no task is auto-selected and START stays enabled with no
+  selection — a taskless start opens a block whose credit modal lists Today
+  tasks.
 - Mid-block, a touched task can be dropped via the ✕ on its chip (not the
   active one), removing it from the completion credit.
 - Fixed first-load timer: a paused timer now requires time left, so the
   idle clock initializes to the full duration and the first START begins a
   block instead of "resuming".
+- Unified time model: a running pomodoro and a break both rehydrate from an
+  absolute server-side `deadline_ms` (the old `started_at + duration` elapsed
+  heuristic is gone). A paused pomodoro persists `paused_remaining_s` and now
+  survives a reload as paused instead of fast-forwarding to finished. Backend:
+  `PUT /blocks/{id}/timer`, migration `0010_block_timer`.
+- Mid-block active-task switches now persist (`PUT /blocks/{id}/tasks`) and
+  survive a reload, matching taskless assigns; both restore the full touched
+  set.
+- Credit-on-finish converges. A transient `POST /credit` failure still keeps
+  the finished block and re-opens the modal to retry, but a terminal `404`
+  (the block was already closed server-side — a concurrent start swept it, or
+  it was deleted) resets to idle instead of re-opening the modal forever.
+- The completion checklist scrolls its task list, so Confirm stays reachable
+  when many Today tasks are listed.
+- Internal: dropped the redundant `pendingTaskId` (it always equalled
+  `selectedTaskId` at the next-block start); `pendingTaskless` still flags an
+  intentional taskless resume.
 
 ## Pin to top
 

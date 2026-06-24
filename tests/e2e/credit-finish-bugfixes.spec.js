@@ -60,5 +60,5 @@ test("VAL-BUG2-001: a failed credit keeps the block and re-opens the modal to re
   // Retry succeeds → credited exactly once.
   await page.locator("#credit-confirm").click();
   await expect.poll(() => page.evaluate(() => state.activeBlock)).toBe(null);
-  expect(await bd(page, tid)).toBe(before + 1);
+  await expect.poll(() => bd(page, tid)).toBe(before + 1);
 });

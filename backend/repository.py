@@ -203,12 +203,37 @@ class Repository:
         block = Block(task_id=task_id, duration_min=duration_min)
         self._session.add(block)
         self._session.flush()
+        # Seed the running deadline so a reload before the client's first timer
+        # sync still rehydrates from an absolute deadline (not the old elapsed
+        # heuristic). TIME_SCALE is 1, so this matches the client's own deadline.
+        started = block.started_at
+        if started.tzinfo is None:
+            started = started.replace(tzinfo=timezone.utc)
+        block.deadline_ms = int(started.timestamp() * 1000) + duration_min * 60_000
+        self._session.flush()
         return {
             "id": block.id,
             "task_id": block.task_id,
             "duration_min": block.duration_min,
             "started_at": _iso(block.started_at),
         }
+
+    def set_block_timer(
+        self,
+        block_id: int,
+        deadline_ms: int | None,
+        paused_remaining_s: int | None,
+    ) -> dict | None:
+        # Persist the open block's timer state so a reload restores it: a running
+        # block carries an absolute deadline_ms, a paused one carries the seconds
+        # left. Rejected once the block has ended (mirrors set_block_tasks).
+        block = self._session.get(Block, block_id)
+        if block is None or block.ended_at is not None:
+            return None
+        block.deadline_ms = deadline_ms
+        block.paused_remaining_s = paused_remaining_s
+        self._session.flush()
+        return self.get_block(block_id)
 
     def get_block(self, block_id: int) -> dict | None:
         block = self._session.get(Block, block_id)
@@ -265,7 +290,13 @@ class Repository:
         self, block_id: int, task_ids: list[int], note: str = ""
     ) -> int | None:
         block = self._session.get(Block, block_id)
-        if block is None or block.ended_at is not None:
+        # A finished pomo's block may already be ended-as-completed by the
+        # create_block sweep (a concurrent start from a second tab/device closed
+        # it while its credit modal was still open). The user's Confirm must still
+        # land on that block — re-credit it idempotently. Only an aborted block
+        # (ended, completed=False) is rejected, so an abandoned pomo can't be
+        # re-completed.
+        if block is None or (block.ended_at is not None and not block.completed):
             return None
         now = utcnow()
         block.ended_at = now
@@ -293,6 +324,8 @@ class Repository:
             "duration_min": block.duration_min,
             "started_at": _iso(block.started_at),
             "touched_task_ids": self._block_touched_ids(block.id),
+            "deadline_ms": block.deadline_ms,
+            "paused_remaining_s": block.paused_remaining_s,
         }
 
     # ---- break state (singleton row id=1: the running break, no task) ----

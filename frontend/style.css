@@ -824,6 +824,8 @@ details[open] > summary.bucket-head::before {
 
 .modal-card {
   width: min(360px, 90vw);
+  max-height: 90vh;
+  overflow-y: auto;
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 14px;
@@ -842,6 +844,10 @@ details[open] > summary.bucket-head::before {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
+  /* Keep the record field and Confirm reachable when many Today tasks are
+     listed — the list scrolls instead of pushing the card off-screen. */
+  max-height: 40vh;
+  overflow-y: auto;
 }
 
 .sr-only {

@@ -5,6 +5,9 @@
 import { expect } from "@playwright/test";
 
 // Navigate and wait until app.js has booted and the first dashboard sync landed.
+// The e2e server shares one throwaway DB across serial specs, so a prior test's
+// leftover running block or break would rehydrate into this one. Clear both and
+// reset the client to idle so every test starts hermetic.
 export async function gotoApp(page) {
   await page.goto("/");
   await page.waitForFunction(
@@ -12,6 +15,37 @@ export async function gotoApp(page) {
     null,
     { timeout: 15_000 },
   );
+  await page.evaluate(async () => {
+    const rb = state.dashboard && state.dashboard.running_block;
+    const brk = state.dashboard && state.dashboard.break_state;
+    if (!rb && !brk) {
+      return; // already clean — skip the extra round-trips (the common case)
+    }
+    if (rb) {
+      try {
+        await api(`/api/blocks/${rb.id}`, {
+          method: "PATCH",
+          body: JSON.stringify({ completed: false }),
+        });
+      } catch {}
+    }
+    if (brk) {
+      try { await api("/api/break", { method: "DELETE" }); } catch {}
+    }
+    clearTimerInterval();
+    state.activeBlock = null;
+    state.activeTaskId = null;
+    state.touchedTaskIds = new Set();
+    state.running = false;
+    state.timerMode = "pomodoro";
+    state.deadline = null;
+    state.remainingSeconds = timerDurationSeconds();
+    // maybeRehydrateTimer also set these from the leftover block; clear them so
+    // the next test starts from idle defaults, not a prior test's task.
+    state.selectedTaskId = null;
+    state.pendingTaskless = false;
+    await syncNow();
+  });
 }
 
 // Deterministic settings (sound/tick off, fixed durations) — mirrors the old

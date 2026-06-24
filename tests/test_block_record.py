@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import timedelta, timezone
 
 import pytest
 from sqlalchemy import create_engine
@@ -142,3 +142,63 @@ def test_start_block_keeps_finished_leftover_credited(service):
     pomos = service.get_history()["pomos"]
     assert [p["task_name"] for p in pomos] == ["task A"]
     assert service.get_stats()["all_time_pomos"] == 1
+
+
+def test_create_block_seeds_running_deadline(service):
+    # A fresh block carries an absolute deadline (started_at + duration) so a
+    # reload before the client's first timer sync still rehydrates from a
+    # deadline, not the old elapsed heuristic.
+    a = service.create_task_from_raw("task A")
+    block = service.start_block(a["id"], 25)
+    rb = service.get_dashboard()["running_block"]
+    assert rb["id"] == block["id"]
+    assert rb["paused_remaining_s"] is None
+    assert rb["deadline_ms"] is not None
+    started = service._repo._session.get(Block, block["id"]).started_at
+    if started.tzinfo is None:  # sqlite stores tz-naive; treat as UTC like the repo
+        started = started.replace(tzinfo=timezone.utc)
+    assert rb["deadline_ms"] == int(started.timestamp() * 1000) + 25 * 60_000
+
+
+def test_set_block_timer_running_then_paused(service):
+    # The client pushes deadline while running and remaining while paused; exactly
+    # one is set on the open block, and the dashboard reflects it for rehydrate.
+    a = service.create_task_from_raw("task A")
+    block = service.start_block(a["id"], 25)
+
+    service.set_block_timer(block["id"], deadline_ms=1_900_000_000_000, paused_remaining_s=None)
+    rb = service.get_dashboard()["running_block"]
+    assert rb["deadline_ms"] == 1_900_000_000_000
+    assert rb["paused_remaining_s"] is None
+
+    service.set_block_timer(block["id"], deadline_ms=None, paused_remaining_s=742)
+    rb = service.get_dashboard()["running_block"]
+    assert rb["deadline_ms"] is None
+    assert rb["paused_remaining_s"] == 742
+
+
+def test_set_block_timer_rejects_ended_block(service):
+    a = service.create_task_from_raw("task A")
+    block = service.start_block(a["id"], 25)
+    service.end_block(block["id"], completed=False)
+    with pytest.raises(NotFoundError):
+        service.set_block_timer(block["id"], deadline_ms=123, paused_remaining_s=None)
+
+
+def test_credit_lands_on_finished_leftover_closed_by_sweep(service):
+    # A finished pomo sits in the credit modal; a concurrent start sweeps its
+    # full-duration block to completed. The user's Confirm must still land on
+    # that already-completed block (re-credit it) instead of 404ing — otherwise
+    # the client's retry loop re-opens the modal forever and the pomo is lost.
+    a = service.create_task_from_raw("task A")
+    b = service.create_task_from_raw("task B")
+    first = service.start_block(a["id"], 25)
+    _backdate(service, first["id"], 26)  # finished pomo
+    service.start_block(b["id"], 25)     # sweep ends `first` as completed
+
+    # Confirm credits the finished block to the user's pick, with their note.
+    assert service.credit_block(first["id"], [a["id"]], "shipped it") == 1
+    block = service._repo._session.get(Block, first["id"])
+    assert block.completed is True
+    assert block.note == "shipped it"
+    assert service.get_stats()["all_time_pomos"] == 1  # one pomo, not doubled

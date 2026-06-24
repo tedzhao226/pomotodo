@@ -78,6 +78,11 @@ class Block(Base):
     )
     completed: Mapped[bool] = mapped_column(Boolean, default=False)
     note: Mapped[str] = mapped_column(Text, default="")
+    # Timer state for rehydrate. While running, deadline_ms is the absolute
+    # epoch-ms end (the same model breaks use); while paused, paused_remaining_s
+    # holds the logical seconds left. Exactly one is set on an open block.
+    deadline_ms: Mapped[int | None] = mapped_column(BigInteger, default=None)
+    paused_remaining_s: Mapped[int | None] = mapped_column(Integer, default=None)
 
     task: Mapped[Task | None] = relationship(back_populates="blocks")
 

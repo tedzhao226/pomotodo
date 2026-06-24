@@ -138,6 +138,19 @@ class Service:
             raise NotFoundError(f"Running block {block_id} not found")
         return block
 
+    def set_block_timer(
+        self,
+        block_id: int,
+        deadline_ms: int | None,
+        paused_remaining_s: int | None,
+    ) -> dict:
+        block = self._repo.set_block_timer(
+            block_id, deadline_ms, paused_remaining_s
+        )
+        if block is None:
+            raise NotFoundError(f"Running block {block_id} not found")
+        return block
+
     def credit_block(
         self, block_id: int, task_ids: list[int], note: str = ""
     ) -> int:

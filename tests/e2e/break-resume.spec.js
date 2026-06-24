@@ -17,7 +17,6 @@ async function startBlockAt(page, tid, elapsedFrac) {
   }, elapsedFrac);
 }
 const selected = (page) => page.evaluate(() => state.selectedTaskId);
-const pending = (page) => page.evaluate(() => state.pendingTaskId);
 const activeTask = (page) => page.evaluate(() => state.activeTaskId);
 const mode = (page) => page.evaluate(() => state.timerMode);
 
@@ -75,7 +74,6 @@ test("VAL-BREAK-003: marking the carried task done detaches it", async ({ page }
 
   await rowAction(item, "toggle"); // mark done
   await expect.poll(() => selected(page)).toBe(null);
-  await expect.poll(() => pending(page)).toBe(null);
 });
 
 test("VAL-BREAK-004: a taskless block carries nothing", async ({ page }) => {

@@ -18,6 +18,7 @@ from backend.schemas import (
     HistoryResponse,
     ReorderRequest,
     SetBlockTasksRequest,
+    SetBlockTimerRequest,
     SetBreakRequest,
     StatsResponse,
     TaskResponse,
@@ -158,6 +159,21 @@ def set_block_tasks(
     try:
         block = service.set_block_tasks(
             block_id, body.active_task_id, body.touched_task_ids
+        )
+    except NotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return BlockResponse(**block)
+
+
+@router.put("/blocks/{block_id}/timer", response_model=BlockResponse)
+def set_block_timer(
+    block_id: int,
+    body: SetBlockTimerRequest,
+    service: ServiceDep,
+) -> BlockResponse:
+    try:
+        block = service.set_block_timer(
+            block_id, body.deadline_ms, body.paused_remaining_s
         )
     except NotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc

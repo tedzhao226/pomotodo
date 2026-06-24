@@ -38,9 +38,10 @@ test("VAL-SKIP-001/003: skip ≥1/3 via Long Break tab credits the block, goes t
   await page.locator("#credit-confirm").click();
 
   await expect.poll(() => page.evaluate(() => state.activeBlock)).toBe(null);
+  // Streak/mode/credit settle across an async syncNow after activeBlock clears.
+  await expect.poll(() => mode(page)).toBe("longBreak");
   expect(await bd(page, tid)).toBe(before + 1);
   expect(await streak(page)).toBe(s0 + 1);
-  expect(await mode(page)).toBe("longBreak");
 });
 
 test("VAL-SKIP-002: skip <1/3 discards (confirmed), no credit, goes to chosen break", async ({ page }) => {
@@ -51,8 +52,8 @@ test("VAL-SKIP-002: skip <1/3 discards (confirmed), no credit, goes to chosen br
   await page.locator('.timer-tab[data-mode="shortBreak"]').click(); // confirm=true (stub)
   await expect(page.locator("#credit-modal")).toBeHidden(); // discard path, no credit modal
   await expect.poll(() => page.evaluate(() => state.activeBlock)).toBe(null);
+  await expect.poll(() => mode(page)).toBe("shortBreak");
   expect(await bd(page, tid)).toBe(before); // not credited
-  expect(await mode(page)).toBe("shortBreak");
 });
 
 test("VAL-SKIP-004: ⏭ button ≥1/3 credits to a short break", async ({ page }) => {
@@ -65,6 +66,6 @@ test("VAL-SKIP-004: ⏭ button ≥1/3 credits to a short break", async ({ page }
   await page.locator("#credit-confirm").click();
 
   await expect.poll(() => page.evaluate(() => state.activeBlock)).toBe(null);
+  await expect.poll(() => mode(page)).toBe("shortBreak");
   expect(await bd(page, tid)).toBe(before + 1);
-  expect(await mode(page)).toBe("shortBreak");
 });

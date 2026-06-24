@@ -147,6 +147,7 @@ const MESSAGES = {
     "confirm.deleteTodo":
       "Permanently delete this todo and its pomos? This cannot be undone.",
     "err.endBlock": "Couldn't end block: {msg}",
+    "err.creditGone": "This pomo was already closed elsewhere — nothing to credit.",
     "err.move": "Couldn't move task: {msg}",
     "err.saveOrder": "Couldn't save order: {msg}",
 
@@ -298,6 +299,7 @@ const MESSAGES = {
     "confirm.deletePomo": "永久删除这个番茄？此操作不可撤销。",
     "confirm.deleteTodo": "永久删除这个待办及其番茄？此操作不可撤销。",
     "err.endBlock": "无法结束番茄：{msg}",
+    "err.creditGone": "这个番茄已在别处结束——无可记录。",
     "err.move": "无法移动任务：{msg}",
     "err.saveOrder": "无法保存排序：{msg}",
 

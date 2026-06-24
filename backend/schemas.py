@@ -53,6 +53,13 @@ class SetBlockTasksRequest(BaseModel):
     touched_task_ids: list[int]
 
 
+class SetBlockTimerRequest(BaseModel):
+    # Exactly one is non-null: deadline_ms while running, paused_remaining_s while
+    # paused.
+    deadline_ms: int | None = None
+    paused_remaining_s: int | None = None
+
+
 class CreditBlockRequest(BaseModel):
     task_ids: list[int]
     note: str = ""
@@ -89,6 +96,8 @@ class RunningBlock(BaseModel):
     duration_min: int
     started_at: str
     touched_task_ids: list[int] = []
+    deadline_ms: int | None = None
+    paused_remaining_s: int | None = None
 
 
 class SetBreakRequest(BaseModel):
