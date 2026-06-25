@@ -19,7 +19,6 @@ class Repository:
             "id": task.id,
             "name": task.name,
             "estimate_blocks": task.estimate_blocks,
-            "blocks_override": task.blocks_override,
             "status": task.status,
             "bucket": task.bucket,
             "sort_order": task.sort_order,
@@ -164,7 +163,6 @@ class Repository:
         stats = self.get_task_block_stats()
         result = []
         for task in tasks:
-            done = stats.get(task.id, {}).get("blocks_done", 0)
             result.append(
                 {
                     "id": task.id,
@@ -173,11 +171,7 @@ class Repository:
                     "status": task.status,
                     "archived": task.archived,
                     "bucket": task.bucket,
-                    "blocks_done": (
-                        task.blocks_override
-                        if task.blocks_override is not None
-                        else done
-                    ),
+                    "blocks_done": stats.get(task.id, {}).get("blocks_done", 0),
                     "created_at": _iso(task.created_at),
                 }
             )

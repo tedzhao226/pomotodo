@@ -53,14 +53,15 @@ test("VAL-LIVE-003: finished pomo reaches open History without re-opening it", a
   // Prime the History panel (load state.history), then return to the timer.
   await page.evaluate(() => openHistory());
   await expect.poll(() => page.evaluate(() => !!state.history)).toBe(true);
-  const before = await page.evaluate(() => state.history.pomos.length);
+  const before = await page.evaluate(() => state.history.pomosTotal);
   await markNoReload(page);
 
   await finishPomoOn(page, tid);
 
-  // The finished pomo must reach state.history.pomos via the normal sync path —
-  // no re-open of the History tab, no reload.
-  await expect.poll(() => page.evaluate(() => state.history.pomos.length)).toBe(before + 1);
+  // The finished pomo must reach the History data via the normal sync path — no
+  // re-open of the History tab, no reload. Assert pomosTotal (not pomos.length,
+  // which caps at one page once the shared DB has ≥ HISTORY_POMO_PAGE pomos).
+  await expect.poll(() => page.evaluate(() => state.history.pomosTotal)).toBe(before + 1);
   expect(await stillNoReload(page), "no navigation").toBe(true);
 });
 

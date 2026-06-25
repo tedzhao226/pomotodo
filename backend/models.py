@@ -31,7 +31,6 @@ class Task(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(Text)
     estimate_blocks: Mapped[int | None] = mapped_column(Integer, default=None)
-    blocks_override: Mapped[int | None] = mapped_column(Integer, default=None)
     status: Mapped[str] = mapped_column(String(16), default="active")
     bucket: Mapped[str] = mapped_column(String(16), default="today")
     sort_order: Mapped[int] = mapped_column(Integer, default=0)

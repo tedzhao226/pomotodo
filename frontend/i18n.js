@@ -119,7 +119,6 @@ const MESSAGES = {
 
     "editor.name": "Name",
     "editor.nameHint": "#tag *N supported",
-    "editor.done": "Done",
     "editor.estimate": "Estimate",
     "editor.note": "Note",
     "editor.noteHint": "markdown: **bold**, *italic*, - list, [link](url)",
@@ -275,7 +274,6 @@ const MESSAGES = {
 
     "editor.name": "名称",
     "editor.nameHint": "支持 #标签 *数字",
-    "editor.done": "已完成",
     "editor.estimate": "预估",
     "editor.note": "笔记",
     "editor.noteHint": "markdown：**粗体**、*斜体*、- 列表、[链接](url)",

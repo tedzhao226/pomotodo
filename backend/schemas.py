@@ -22,7 +22,6 @@ class TaskResponse(BaseModel):
 class UpdateTaskRequest(BaseModel):
     name: str | None = None
     estimate_blocks: int | None = None
-    blocks_done: int | None = None
     status: Literal["active", "done"] | None = None
     bucket: Literal["today", "backlog"] | None = None
     note: str | None = None

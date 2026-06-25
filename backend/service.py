@@ -28,7 +28,6 @@ class Service:
         *,
         name: str | None = None,
         estimate_blocks: int | None = None,
-        blocks_done: int | None = None,
         status: str | None = None,
         bucket: str | None = None,
         note: str | None = None,
@@ -52,10 +51,6 @@ class Service:
             if estimate_blocks < 0:
                 raise ValidationError("estimate_blocks must be non-negative")
             fields["estimate_blocks"] = estimate_blocks
-        if blocks_done is not None:
-            if blocks_done < 0:
-                raise ValidationError("blocks_done must be non-negative")
-            fields["blocks_override"] = blocks_done
         if status is not None:
             fields["status"] = status
         if bucket is not None:
@@ -177,10 +172,6 @@ class Service:
                     "ended_at": None,
                 },
             )
-            override = task["blocks_override"]
-            blocks_done = (
-                override if override is not None else task_stats["blocks_done"]
-            )
             dashboard_tasks.append(
                 {
                     "id": task["id"],
@@ -191,7 +182,7 @@ class Service:
                     "bucket": task["bucket"],
                     "sort_order": task["sort_order"],
                     "note": task["note"],
-                    "blocks_done": blocks_done,
+                    "blocks_done": task_stats["blocks_done"],
                     "total_minutes": task_stats["total_minutes"],
                     "started_at": task_stats["started_at"],
                     "ended_at": task_stats["ended_at"],

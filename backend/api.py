@@ -85,7 +85,6 @@ def update_task(
             task_id,
             name=body.name,
             estimate_blocks=body.estimate_blocks,
-            blocks_done=body.blocks_done,
             status=body.status,
             bucket=body.bucket,
             note=body.note,

@@ -593,9 +593,6 @@ function editorHtml(task) {
         <input type="text" data-field="name" value="${escapeHtml(task.name)}">
       </label>
       <div class="editor-nums">
-        <label>${t("editor.done")}
-          <input type="number" min="0" data-field="blocks_done" value="${task.blocks_done}">
-        </label>
         <label>${t("editor.estimate")}
           <input type="number" min="0" data-field="estimate_blocks" value="${task.estimate_blocks ?? ""}">
         </label>
@@ -2257,10 +2254,6 @@ async function handleTaskClick(event) {
     const name = editor.querySelector("[data-field='name']").value.trim();
     if (name) {
       body.name = name;
-    }
-    const done = editor.querySelector("[data-field='blocks_done']").value;
-    if (done !== "") {
-      body.blocks_done = Number(done);
     }
     const estimate = editor.querySelector("[data-field='estimate_blocks']").value;
     if (estimate !== "") {

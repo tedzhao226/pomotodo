@@ -63,7 +63,10 @@ test("VAL-CREDIT-ACTIVE-001: a mid-block switch credits the task you ended on", 
   await page.locator("#credit-confirm").click(); // default selection (both checked)
   await expect.poll(() => page.evaluate(() => state.activeBlock)).toBe(null);
 
-  expect(await bd(page, b.tid), "switched-to B credited").toBe(b0 + 1);
+  // activeBlock clears before completeBlockWithCredit's async syncNow refreshes
+  // the dashboard, so poll the credited count; the unchanged read below is safe
+  // once that poll has settled past the sync.
+  await expect.poll(() => bd(page, b.tid), { message: "switched-to B credited" }).toBe(b0 + 1);
   expect(await bd(page, a.tid), "start anchor A not credited").toBe(a0);
 });
 
@@ -81,7 +84,7 @@ test("VAL-CREDIT-ACTIVE-001b: unchecking the active task credits the one left ch
   await page.locator("#credit-confirm").click();
   await expect.poll(() => page.evaluate(() => state.activeBlock)).toBe(null);
 
-  expect(await bd(page, a.tid), "A credited when B unchecked").toBe(a0 + 1);
+  await expect.poll(() => bd(page, a.tid), { message: "A credited when B unchecked" }).toBe(a0 + 1);
   expect(await bd(page, b.tid), "B not credited").toBe(b0);
 });
 
@@ -94,7 +97,7 @@ test("VAL-CREDIT-ACTIVE-002: taskless start + assign a TODAY task credits it", a
   expect(await modalIds(page), "assigned task shown in modal").toContain(t.tid);
   await page.locator("#credit-confirm").click();
   await expect.poll(() => page.evaluate(() => state.activeBlock)).toBe(null);
-  expect(await bd(page, t.tid)).toBe(before + 1);
+  await expect.poll(() => bd(page, t.tid)).toBe(before + 1);
 });
 
 test("VAL-CREDIT-ACTIVE-002b: taskless start + assign a BACKLOG task shows + credits it", async ({ page }) => {
@@ -111,7 +114,7 @@ test("VAL-CREDIT-ACTIVE-002b: taskless start + assign a BACKLOG task shows + cre
   expect(await modalIds(page), "backlog task shown in modal").toContain(t.tid);
   await page.locator("#credit-confirm").click();
   await expect.poll(() => page.evaluate(() => state.activeBlock)).toBe(null);
-  expect(await bd(page, t.tid)).toBe(before + 1);
+  await expect.poll(() => bd(page, t.tid)).toBe(before + 1);
 });
 
 test("VAL-CREDIT-ACTIVE-003: switch credit works with auto-break on", async ({ page }) => {
@@ -127,7 +130,7 @@ test("VAL-CREDIT-ACTIVE-003: switch credit works with auto-break on", async ({ p
   await page.locator("#credit-confirm").click();
   await expect.poll(() => page.evaluate(() => state.activeBlock)).toBe(null);
 
-  expect(await bd(page, b.tid), "B credited once").toBe(b0 + 1);
+  await expect.poll(() => bd(page, b.tid), { message: "B credited once" }).toBe(b0 + 1);
   expect(await bd(page, a.tid), "A not credited").toBe(a0);
   // The break auto-started — no double credit, clean transition.
   await expect.poll(() => page.evaluate(() => state.timerMode)).toMatch(/Break$/);
