@@ -751,16 +751,27 @@ function renderAll() {
 }
 
 let syncTimer = null;
+// Monotonic token so an in-flight sync whose response resolves late can't
+// overwrite a newer one: e.g. a 15s periodic sync started just before a
+// task-create would otherwise clobber the just-created task with stale data
+// until the next refresh.
+let syncGeneration = 0;
 
 // Reconcile the buffer with the backend, then render. The two fetches are
 // independent: a failure of one (e.g. /api/stats 5xx) must not discard the
 // other, so the core UI (tasks + timer) stays live even if stats is broken.
 // Failures are logged rather than swallowed so a persistent 5xx is visible.
 async function syncNow() {
+  const generation = ++syncGeneration;
   const [dashboard, stats] = await Promise.allSettled([
     api("/api/dashboard"),
     api("/api/stats"),
   ]);
+  // A newer sync started while these were in flight: discard this now-stale
+  // result so a late older response can't clobber the freshest dashboard.
+  if (generation !== syncGeneration) {
+    return;
+  }
   if (dashboard.status === "fulfilled") {
     state.dashboard = dashboard.value;
   } else {
