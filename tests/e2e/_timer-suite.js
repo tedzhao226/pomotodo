@@ -559,15 +559,15 @@ export async function timerSuite() {
   await syncNow();
   await openHistory();
   // De-dup: one timer block = ONE finished pomo carrying the combined record.
-  // Both A and B were checked, but the session is attributed to the anchor A
-  // (A was credited) and B does NOT get a separate pomo row.
+  // Both A and B were checked, but the session is attributed to the task active
+  // at finish (B, switched-to) — A is note-only and does NOT get a separate pomo.
   const recPomos = state.history.pomos.filter((p) => p.note === customNote);
   check("VAL-REC-005: exactly one finished pomo carries the record", recPomos.length === 1);
   check(
-    "VAL-DEDUP-001: no duplicate pomo — attributed to A, no separate B pomo",
+    "VAL-DEDUP-001: no duplicate pomo — attributed to B (active at finish), no separate A pomo",
     recPomos.length === 1 &&
-      recPomos[0].task_id === aId &&
-      !state.history.pomos.some((p) => p.task_id === bId && p.note === customNote),
+      recPomos[0].task_id === bId &&
+      !state.history.pomos.some((p) => p.task_id === aId && p.note === customNote),
   );
   const histHtml = el("#history-pomos").innerHTML;
   check("VAL-REC-005: record text rendered in History", histHtml.includes(customNote));

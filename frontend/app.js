@@ -783,6 +783,11 @@ async function syncNow() {
     console.warn("syncNow: stats fetch failed", stats.reason);
   }
   renderAll();
+  // History isn't part of renderAll()/the dashboard fetch, so refresh it here too
+  // when it's loaded — a finished pomo reaches the open History panel without a
+  // reload. Fire-and-forget: reloadHistory() renders on its own settle and must
+  // not stall the rehydrate below.
+  refreshHistoryIfLoaded();
   // Rehydrate only on a good dashboard: maybeRehydrateTimer latches
   // state.rehydrated on its first call, so running it without dashboard data
   // would permanently skip resuming a running block.
@@ -1362,6 +1367,17 @@ async function reloadHistory() {
   renderHistory();
 }
 
+// Refresh History only if it's been opened this session, so a pomo that finishes
+// while History is loaded shows up without re-opening the tab. Uses reloadHistory()
+// (preserves the current page), not openHistory() (resets to page 0).
+// ponytail: one extra GET /api/history per sync while History is open — cheap;
+// upgrade to a versioned/diff endpoint only if the payload grows large.
+async function refreshHistoryIfLoaded() {
+  if (state.history) {
+    await reloadHistory();
+  }
+}
+
 async function refreshStatsIfLoaded() {
   if (!state.stats) {
     return;
@@ -1600,10 +1616,16 @@ async function completeBlockWithCredit({ nextBreak } = {}) {
       creditableIds,
       titleKey: startedTaskless ? "credit.titleUntethered" : "credit.title",
     });
+    // One pomo = one block = one task: credit the task you ended on (the active
+    // task at finish). If you unchecked it, the first task you left checked owns
+    // the pomo instead. Sending only the owner (not the stale start anchor) makes
+    // a mid-block switch land on the switched-to task; the note still lists every
+    // checked name. Empty ⇒ nothing creditable checked: keep the existing anchor.
+    const owner = checked.includes(lastActive) ? lastActive : checked[0] ?? null;
     try {
       await api(`/api/blocks/${block.id}/credit`, {
         method: "POST",
-        body: JSON.stringify({ task_ids: checked, note }),
+        body: JSON.stringify({ task_ids: owner != null ? [owner] : [], note }),
       });
       break;
     } catch (error) {
@@ -2146,6 +2168,14 @@ async function handleTaskClick(event) {
       }
       state.activeTaskId = taskId;
       state.touchedTaskIds.add(taskId);
+      // Mirror the server: the anchor (block.task_id) is set on the first assign to
+      // a taskless block and never moves on later switches. Keep the client copy in
+      // sync so completeBlockWithCredit picks the assigned (not untethered) finish
+      // scenario — and a Backlog task assigned to a taskless block still shows in
+      // the credit modal instead of being filtered out as a non-Today task.
+      if (state.activeBlock.task_id == null) {
+        state.activeBlock.task_id = taskId;
+      }
       // Persist the new active task + the full touched set so a reload restores
       // them (assign and switch alike).
       await syncBlockTasks();

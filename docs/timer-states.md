@@ -76,7 +76,7 @@ stateDiagram-v2
     Running --> Running: Restart<br/>reset countdown to full, same block
 
     Running --> Credit: complete (timer hits 0)
-    Credit --> Rest: Confirm checklist<br/>pomo credited to first checked task, streak++
+    Credit --> Rest: Confirm checklist<br/>pomo credited to the task active at finish, streak++
 
     Running --> Rest: Skip / Esc (abort)<br/>no credit
     Paused --> Rest: Skip / Esc (abort)<br/>no credit
@@ -111,7 +111,7 @@ flowchart TD
     Drop --> During
 
     During -- "complete (timer 0)" --> Prompt["Credit checklist<br/>(assigned/touched pre-checked)"]
-    Prompt --> Confirm["Confirm: pomo (1 block) credited to<br/>the first checked task; all checked names -> note"]
+    Prompt --> Confirm["Confirm: pomo (1 block) credited to the task<br/>active at finish; all checked names -> note"]
 
     During -- "skip / Esc / abort" --> Abort["discard touchedTaskIds<br/>credit nobody"]
 ```
@@ -121,9 +121,11 @@ Key rules:
 - **No credit until completion.** Switching and finishing todos during a
   block never grant blocks; they only build the touched set.
 - **Completion checklist.** A natural finish produces **one** counted block,
-  credited to the first checked task; all checked names go into the record.
-  The streak bumps once for the block. The checklist shape depends on how the
-  block started — see *Finish-time credit scenarios* below.
+  credited to the **task active at finish** (the last task you assigned/switched
+  to); if you uncheck it, the first task you left checked owns the pomo instead.
+  All checked names go into the record. The streak bumps once for the block. The
+  checklist shape depends on how the block started — see *Finish-time credit
+  scenarios* below.
 - **Abort earns nothing.** Skip, Esc, or any abort before the timer ends
   discards the touched set.
 - **Restart** re-runs the same block from its full duration without
@@ -133,6 +135,11 @@ Key rules:
 
 The credit modal composes differently depending on whether the block was
 started with a task. Both yield exactly one counted block.
+
+A block is "assigned" (Scenario 2) as soon as a task is set on it — including a
+task assigned mid-block to a taskless block. The client keeps `block.task_id` in
+sync with the server anchor on that first assign, so a taskless start that later
+gets a task shows the assigned-pomo modal (and a Backlog task is not hidden).
 
 ### Scenario 1 — unassigned pomo (`block.task_id == null`)
 
@@ -144,13 +151,14 @@ started with a task. Both yield exactly one counted block.
 ### Scenario 2 — assigned pomo (`block.task_id != null`)
 
 - Shows the **assigned + mid-block-touched** tasks first, pre-checked — the
-  *creditable* group that owns the pomo.
+  *creditable* group. The pomo is credited to the one **active at finish** (the
+  task you ended on); uncheck it to hand the pomo to another checked task.
 - A divider ("also worked on today — no credit") separates a *label-only*
   group: **every other Today task**, unchecked.
 - Ticking a label-only task only appends its name to the note. It never
-  reassigns the block and never adds a pomo; the pomo stays on the assigned
-  task. (Client-side: label-only ids are filtered out before `POST /credit`,
-  so they can't become `task_ids[0]`.)
+  reassigns the block and never adds a pomo. (Client-side: only the owner id is
+  sent to `POST /credit`; label-only ids never reach it, and the stale start
+  anchor is excluded so the switched-to task wins.)
 
 ### Feature checklist
 
@@ -158,7 +166,8 @@ started with a task. Both yield exactly one counted block.
 - [ ] Assigned finish → assigned/touched checked above the divider.
 - [ ] Assigned finish → other Today tasks listed below, label-only, unchecked.
 - [ ] Label-only ticks enrich the note only — no reassignment, no extra pomo.
-- [ ] Any confirm produces exactly one counted block (first creditable check).
+- [ ] A mid-block switch credits the task active at finish, not the start anchor.
+- [ ] Any confirm produces exactly one counted block.
 - [ ] Abort/skip credits nothing.
 
 ## UI signals

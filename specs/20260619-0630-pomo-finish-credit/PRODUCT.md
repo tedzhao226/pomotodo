@@ -1,5 +1,11 @@
 # Pomo-finish credit: two scenarios
 
+> **Superseded (2026-06-25):** Scenario 2's "the pomo stays on the assigned task"
+> was changed by `specs/20260625-1658-live-panel-refresh` (VAL-CREDIT-ACTIVE-*).
+> A finished pomo now credits the **task active at finish** (the one you
+> assigned/switched to), not the start anchor — uncheck it to hand the pomo to
+> another checked task. One pomo = one block = one task is unchanged.
+
 When a work block (pomo) completes, the credit modal must behave differently
 depending on whether the pomo was started with a task.
 
