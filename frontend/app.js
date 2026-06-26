@@ -625,7 +625,17 @@ function tasksInBucket(bucket) {
     .sort((a, b) => a.sort_order - b.sort_order || a.id - b.id);
 }
 
-function taskItem(task, draggable, { pinEnabled = true, isFirst = false } = {}) {
+function taskItem(
+  task,
+  draggable,
+  { pinEnabled = true, isFirst = false, editorRow = null } = {},
+) {
+  // Reuse the live editor node so a re-render (background sync, or adding a
+  // task elsewhere) keeps unsaved input instead of rebuilding it from stale
+  // dashboard data. innerHTML="" only detaches it; we still hold the reference.
+  if (editorRow && state.editingTaskId === task.id) {
+    return editorRow;
+  }
   const li = document.createElement("li");
   li.className = "task-item";
   li.dataset.id = task.id;
@@ -648,7 +658,12 @@ function taskItem(task, draggable, { pinEnabled = true, isFirst = false } = {}) 
   return li;
 }
 
-function fillBucket(listEl, tasks, draggable, { pinEnabled = true } = {}) {
+function fillBucket(
+  listEl,
+  tasks,
+  draggable,
+  { pinEnabled = true, editorRow = null } = {},
+) {
   listEl.innerHTML = "";
   if (!tasks.length) {
     const li = document.createElement("li");
@@ -660,7 +675,7 @@ function fillBucket(listEl, tasks, draggable, { pinEnabled = true } = {}) {
   for (let index = 0; index < tasks.length; index++) {
     const task = tasks[index];
     listEl.appendChild(
-      taskItem(task, draggable, { pinEnabled, isFirst: index === 0 }),
+      taskItem(task, draggable, { pinEnabled, isFirst: index === 0, editorRow }),
     );
     if (
       state.expandedNoteId === task.id &&
@@ -680,14 +695,25 @@ function renderTaskList() {
   if (!state.dashboard) {
     return;
   }
-  // Preserve an open editor against a background sync so typing isn't clobbered.
-  if (
-    state.editingTaskId !== null &&
-    (els.todayList.querySelector(".task-editor") ||
-      els.backlogList.querySelector(".task-editor"))
-  ) {
-    return;
-  }
+  // An open inline editor holds unsaved input. Reuse its live node across the
+  // re-render so the list still reflects new/changed tasks (e.g. one just added
+  // via the top bar) without clobbering what's being typed. Moving the node
+  // drops focus, so capture and restore it after the render.
+  const editorRow =
+    state.editingTaskId !== null
+      ? (els.todayList.querySelector(".task-item .task-editor") ||
+          els.backlogList.querySelector(".task-item .task-editor"))?.closest(
+          ".task-item",
+        ) ?? null
+      : null;
+  const activeEl =
+    editorRow && editorRow.contains(document.activeElement)
+      ? document.activeElement
+      : null;
+  const selection =
+    activeEl && "selectionStart" in activeEl
+      ? [activeEl.selectionStart, activeEl.selectionEnd]
+      : null;
   const todayTasks = tasksInBucket("today");
   const backlogTasks = tasksInBucket("backlog");
 
@@ -723,10 +749,20 @@ function renderTaskList() {
 
   fillBucket(els.todayList, todayTasks.filter(matches), canDrag, {
     pinEnabled: canDrag,
+    editorRow,
   });
   fillBucket(els.backlogList, backlogTasks.filter(matches), false, {
     pinEnabled: !state.selectedTag && state.editingTaskId === null,
+    editorRow,
   });
+
+  // The reused editor node was detached and re-appended, which drops focus.
+  if (activeEl) {
+    activeEl.focus();
+    if (selection) {
+      activeEl.setSelectionRange(selection[0], selection[1]);
+    }
+  }
 }
 
 function renderDashboard() {
